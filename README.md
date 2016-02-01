@@ -66,7 +66,7 @@ This library attempts to send an
 "unprivileged" ping via UDP. On linux, this must be enabled by setting
 
 ```
-sysctl net.ipv4.ping_group_range=0
+sudo sysctl -w net.ipv4.ping_group_range="0   2147483647"
 ```
 
 If you do not wish to do this, you can set `pinger.SetPrivileged(true)` and
