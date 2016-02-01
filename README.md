@@ -43,7 +43,21 @@ It sends ICMP packet(s) and waits for a response. If it receives a response,
 it calls the "receive" callback. When it's finished, it calls the "finish"
 callback.
 
-For a full ping example, see "cmd/ping/ping.go".
+For a full ping example, see
+[cmd/ping/ping.go"](https://github.com/sparrc/go-ping/blob/master/cmd/ping/ping.go)
+
+## Installation:
+
+```
+go get github.com/sparrc/go-ping
+```
+
+To install the native Go ping executable:
+
+```bash
+go get github.com/sparrc/go-ping/...
+$GOPATH/bin/ping
+```
 
 ## Note on Linux Support:
 
