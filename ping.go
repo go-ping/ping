@@ -201,8 +201,16 @@ type Statistics struct {
 
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
+	var ipv4 bool
+	if isIPv4(ipaddr.IP) {
+		ipv4 = true
+	} else if isIPv6(ipaddr.IP) {
+		ipv4 = false
+	}
+
 	p.ipaddr = ipaddr
 	p.addr = ipaddr.String()
+	p.ipv4 = ipv4
 }
 
 // IPAddr returns the ip address of the target host.
@@ -213,12 +221,13 @@ func (p *Pinger) IPAddr() *net.IPAddr {
 // SetAddr resolves and sets the ip address of the target host, addr can be a
 // DNS name like "www.google.com" or IP like "127.0.0.1".
 func (p *Pinger) SetAddr(addr string) error {
-	ipaddr, err := net.ResolveIPAddr("ip4:icmp", addr)
+	ipaddr, err := net.ResolveIPAddr("ip", addr)
 	if err != nil {
 		return err
 	}
+
+	p.SetIPAddr(ipaddr)
 	p.addr = addr
-	p.ipaddr = ipaddr
 	return nil
 }
 

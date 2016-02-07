@@ -1,5 +1,6 @@
 # go-ping
 [![GoDoc](https://godoc.org/github.com/sparrc/go-ping?status.svg)](https://godoc.org/github.com/sparrc/go-ping)
+[![Circle CI](https://circleci.com/gh/sparrc/go-ping.svg?style=svg)](https://circleci.com/gh/sparrc/go-ping)
 
 ICMP Ping library for Go, inspired by
 [go-fastping](https://github.com/tatsushid/go-fastping)
