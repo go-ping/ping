@@ -2,16 +2,12 @@ package ping
 
 import (
 	"net"
+	"runtime/debug"
 	"testing"
 	"time"
 )
 
 func TestNewPingerValid(t *testing.T) {
-	googleaddr, err := net.ResolveIPAddr("ip", "www.google.com")
-	if err != nil {
-		t.Fatal("Can't resolve www.google.com, can't run tests")
-	}
-
 	p, err := NewPinger("www.google.com")
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "www.google.com", p.Addr())
@@ -24,7 +20,6 @@ func TestNewPingerValid(t *testing.T) {
 	AssertTrue(t, p.Privileged())
 	// Test setting to ipv4 address
 	err = p.SetAddr("www.google.com")
-	AssertTrue(t, p.IPAddr().IP.Equal(googleaddr.IP))
 	AssertNoError(t, err)
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
 	// Test setting to ipv6 address
@@ -44,7 +39,6 @@ func TestNewPingerValid(t *testing.T) {
 	AssertTrue(t, p.Privileged())
 	// Test setting to ipv4 address
 	err = p.SetAddr("www.google.com")
-	AssertTrue(t, p.IPAddr().IP.Equal(googleaddr.IP))
 	AssertNoError(t, err)
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
 	// Test setting to ipv6 address
@@ -62,7 +56,6 @@ func TestNewPingerValid(t *testing.T) {
 	AssertTrue(t, p.Privileged())
 	// Test setting to ipv4 address
 	err = p.SetAddr("www.google.com")
-	AssertTrue(t, p.IPAddr().IP.Equal(googleaddr.IP))
 	AssertNoError(t, err)
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
 	// Test setting to ipv6 address
@@ -82,7 +75,6 @@ func TestNewPingerValid(t *testing.T) {
 	AssertTrue(t, p.Privileged())
 	// Test setting to ipv4 address
 	err = p.SetAddr("www.google.com")
-	AssertTrue(t, p.IPAddr().IP.Equal(googleaddr.IP))
 	AssertNoError(t, err)
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
 	// Test setting to ipv6 address
@@ -101,7 +93,6 @@ func TestNewPingerValid(t *testing.T) {
 	AssertTrue(t, p.Privileged())
 	// Test setting to ipv4 address
 	err = p.SetAddr("www.google.com")
-	AssertTrue(t, p.IPAddr().IP.Equal(googleaddr.IP))
 	AssertNoError(t, err)
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
 	// Test setting to ipv6 address
@@ -236,36 +227,40 @@ func TestStatisticsLossy(t *testing.T) {
 // Test helpers
 func AssertNoError(t *testing.T, err error) {
 	if err != nil {
-		t.Errorf("Expected No Error but got %s", err)
+		t.Errorf("Expected No Error but got %s, Stack:\n%s",
+			err, string(debug.Stack()))
 	}
 }
 
 func AssertError(t *testing.T, err error, info string) {
 	if err == nil {
-		t.Errorf("Expected Error but got %s, %s", err, info)
+		t.Errorf("Expected Error but got %s, %s, Stack:\n%s",
+			err, info, string(debug.Stack()))
 	}
 }
 
 func AssertEqualStrings(t *testing.T, expected, actual string) {
 	if expected != actual {
-		t.Errorf("Expected %s, got %s", expected, actual)
+		t.Errorf("Expected %s, got %s, Stack:\n%s",
+			expected, actual, string(debug.Stack()))
 	}
 }
 
 func AssertNotEqualStrings(t *testing.T, expected, actual string) {
 	if expected == actual {
-		t.Errorf("Expected %s, got %s", expected, actual)
+		t.Errorf("Expected %s, got %s, Stack:\n%s",
+			expected, actual, string(debug.Stack()))
 	}
 }
 
 func AssertTrue(t *testing.T, b bool) {
 	if !b {
-		t.Error("Expected True, got False")
+		t.Errorf("Expected True, got False, Stack:\n%s", string(debug.Stack()))
 	}
 }
 
 func AssertFalse(t *testing.T, b bool) {
 	if b {
-		t.Error("Expected False, got True")
+		t.Errorf("Expected False, got True, Stack:\n%s", string(debug.Stack()))
 	}
 }
