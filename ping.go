@@ -236,6 +236,17 @@ func (p *Pinger) Addr() string {
 	return p.addr
 }
 
+// SetSource sets the ip address of the source host, source should
+// be like "127.0.0.1".
+func (p *Pinger) SetSource(source string) {
+	p.source = source
+}
+
+// Addr returns the string ip address of the source host.
+func (p *Pinger) Source() string {
+	return p.source
+}
+
 // SetPrivileged sets the type of ping pinger will send.
 // false means pinger will send an "unprivileged" UDP ping.
 // true means pinger will send a "privileged" raw ICMP ping.
