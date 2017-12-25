@@ -17,6 +17,8 @@ import (
 	"go/src/strconv"
 )
 
+var GlobalID = 0
+
 type BatchPinger struct {
 	pingers []*Pinger2
 
@@ -100,10 +102,9 @@ func NewPinger2(ipaddr *net.IPAddr, id int, ipv4 bool) (*Pinger2) {
 // NewPinger returns a new Pinger struct pointer
 // interval in secs
 func NewBatchPinger(ipSlice []string, count int, interval time.Duration,
-	timeout time.Duration, startID int) (*BatchPinger, error) {
+	timeout time.Duration) (*BatchPinger, error) {
 	pingers := []*Pinger2{}
 
-	x  := startID
 
 	fmt.Printf("count ipSlice:%v\n", len(ipSlice))
 
@@ -122,8 +123,8 @@ func NewBatchPinger(ipSlice []string, count int, interval time.Duration,
 			ipv4 = false
 		}
 
-		id := GenNextID(x)
-		x = id
+		id := GenNextID(GlobalID)
+		GlobalID = id
 		pinger := NewPinger2(ipaddr, id, ipv4)
 		pingers = append(pingers, pinger)
 
@@ -222,8 +223,8 @@ func (bp *BatchPinger) Run() {
 		default:
 			time.Sleep(time.Millisecond * 100)
 			allSent, allRecv := bp.GetAllPacketsRecv()
-			fmt.Printf("Count:%v, SendCount:%v, allSent:%v, allRecv:%v\n",
-				bp.Count, bp.SendCount, allSent, allRecv)
+			//fmt.Printf("Count:%v, SendCount:%v, allSent:%v, allRecv:%v\n",
+				//bp.Count, bp.SendCount, allSent, allRecv)
 			if bp.Count > 0 && bp.SendCount == bp.Count && allRecv >= allSent {
 				close(bp.done)
 				wg.Wait()
