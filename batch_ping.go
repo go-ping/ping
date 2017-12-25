@@ -99,13 +99,18 @@ func NewPinger2(ipaddr *net.IPAddr, id int, ipv4 bool) (*Pinger2) {
 
 // NewPinger returns a new Pinger struct pointer
 // interval in secs
-func NewBatchPinger(ipSlice []string, count int, interval time.Duration, timeout time.Duration, startID int) (*BatchPinger, error) {
+func NewBatchPinger(ipSlice []string, count int, interval time.Duration,
+	timeout time.Duration, startID int) (*BatchPinger, error) {
 	pingers := []*Pinger2{}
 
 	x  := startID
 
+	fmt.Printf("count ipSlice:%v\n", len(ipSlice))
+
 	var ipv4 bool
 	for _, ip := range ipSlice {
+		fmt.Printf("ip:%v\n", ip)
+
 		ipaddr, err := net.ResolveIPAddr("ip", ip)
 		if err != nil {
 			return nil, err
@@ -124,6 +129,7 @@ func NewBatchPinger(ipSlice []string, count int, interval time.Duration, timeout
 
 	}
 
+	fmt.Printf("count pingers:%v\n", len(pingers))
 
 	return &BatchPinger{
 		Interval: interval,
@@ -216,8 +222,9 @@ func (bp *BatchPinger) Run() {
 		default:
 			time.Sleep(time.Millisecond * 100)
 			allSent, allRecv := bp.GetAllPacketsRecv()
-			fmt.Printf("Count:%v, SendCount:%v\n", bp.Count, bp.SendCount)
-			if bp.Count > 0 && allRecv >= allSent {
+			fmt.Printf("Count:%v, SendCount:%v, allSent:%v, allRecv:%v\n",
+				bp.Count, bp.SendCount, allSent, allRecv)
+			if bp.Count > 0 && bp.SendCount == bp.Count && allRecv >= allSent {
 				close(bp.done)
 				wg.Wait()
 				return
@@ -276,7 +283,7 @@ func (p *BatchPinger) RecvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *s
 }
 
 func (bp *BatchPinger) BatchSendICMP(conn *icmp.PacketConn) error {
-	if bp.SendCount > bp.Count{
+	if bp.SendCount >= bp.Count{
 		return nil
 	}
 
@@ -285,11 +292,13 @@ func (bp *BatchPinger) BatchSendICMP(conn *icmp.PacketConn) error {
 		key := strconv.Itoa(pinger.id) + ":" + strconv.Itoa(pinger.sequence)
 		bp.PackPinger[key] = pinger
 
+		fmt.Printf("add:%v, id:%v, seq:%v\n", pinger.addr, pinger.id, pinger.sequence)
 		err := pinger.SendICMP(conn)
 		if err != nil {
 			fmt.Printf("err:%v\n", err)
 			return err
 		}
+
 	}
 
 	bp.SendCount++
@@ -410,6 +419,8 @@ func (bp *BatchPinger) Statistics() []*Statistics {
 func (p *Pinger2) Statistics() *Statistics {
 	loss := float64(p.PacketsSent-p.PacketsRecv) / float64(p.PacketsSent) * 100
 	var min, max, total time.Duration
+	fmt.Println(p.rtts)
+
 	if len(p.rtts) > 0 {
 		min = p.rtts[0]
 		max = p.rtts[0]
