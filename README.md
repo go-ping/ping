@@ -48,8 +48,6 @@ another example
 	ipSlice = append(ipSlice, "github.com")
 	ipSlice = append(ipSlice, "121.42.9.143")
 
-    // startID 用来设置ICMP的ID
-    // 请尽量保证每个批次，都不要重复
 	bp, err := ping.NewBatchPinger(ipSlice, 4, time.Second*1, time.Second*10)
 
 	if err != nil {
