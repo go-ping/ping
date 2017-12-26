@@ -40,24 +40,58 @@ pinger.OnFinish = func(stats *ping.Statistics) {
 fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 pinger.Run()
 ```
+another example
+```
+	ipSlice := []string{}
+	ipSlice = append(ipSlice, "122.228.74.183")
+	ipSlice = append(ipSlice, "wwww.baidu.com")
+	ipSlice = append(ipSlice, "github.com")
+	ipSlice = append(ipSlice, "121.42.9.143")
 
+    // startID 用来设置ICMP的ID
+    // 请尽量保证每个批次，都不要重复
+	bp, err := ping.NewBatchPinger(ipSlice, 4, time.Second*1, time.Second*10)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	bp.OnRecv = func(pkt *icmp.Echo) {
+		//
+		fmt.Printf("recv icmp_id=%d, icmp_seq=%d\n",
+			pkt.ID, pkt.Seq)
+	}
+
+	bp.OnFinish = func(stSlice []*ping.Statistics) {
+		for _, st := range stSlice{
+			fmt.Printf("\n--- %s ping statistics ---\n", st.Addr)
+			fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
+				st.PacketsSent, st.PacketsRecv, st.PacketLoss)
+			fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
+				st.MinRtt, st.AvgRtt, st.MaxRtt, st.StdDevRtt)
+		}
+
+	}
+
+	bp.Run()
+```
 It sends ICMP packet(s) and waits for a response. If it receives a response,
 it calls the "receive" callback. When it's finished, it calls the "finish"
 callback.
 
 For a full ping example, see
-[cmd/ping/ping.go](https://github.com/sparrc/go-ping/blob/master/cmd/ping/ping.go)
+[cmd/ping/ping.go](https://github.com/vearne/go-ping/blob/master/cmd/ping/ping.go)
 
 ## Installation:
 
 ```
-go get github.com/sparrc/go-ping
+go get github.com/vearne/go-ping
 ```
 
 To install the native Go ping executable:
 
 ```bash
-go get github.com/sparrc/go-ping/...
+go get github.com/vearne/go-ping/...
 $GOPATH/bin/ping
 ```
 
