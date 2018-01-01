@@ -78,7 +78,10 @@ it calls the "receive" callback. When it's finished, it calls the "finish"
 callback.
 
 For a full ping example, see
+one address
 [cmd/ping/ping.go](https://github.com/vearne/go-ping/blob/master/cmd/ping/ping.go)
+multiple addresses
+[cmd/ping/ping2.go](https://github.com/vearne/go-ping/blob/master/cmd/ping/ping2.go)
 
 ## Installation:
 
