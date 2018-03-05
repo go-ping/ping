@@ -54,8 +54,8 @@ func main() {
 	}
 
 	pinger.OnRecv = func(pkt *ping.Packet) {
-		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
-			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
+		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v\n",
+			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
 	}
 	pinger.OnFinish = func(stats *ping.Statistics) {
 		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
