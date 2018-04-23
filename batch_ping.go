@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"go/src/strconv"
+	"strconv"
 )
 
 var GlobalID = 0
