@@ -88,7 +88,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		Interval: time.Second,
 		Timeout:  time.Second * 100000,
 		Count:    -1,
-
+		id:      rand.Intn(0xffff),
 		network: "udp",
 		ipv4:    ipv4,
 		size:    timeSliceLength,
@@ -138,6 +138,7 @@ type Pinger struct {
 	ipv4     bool
 	source   string
 	size     int
+	id       int
 	sequence int
 	network  string
 }
@@ -424,6 +425,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return nil
 	}
 
+	body := m.Body.(*icmp.Echo)
+	if body.ID != p.id {
+		return nil
+	}
+	
+
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
@@ -469,7 +476,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	bytes, err := (&icmp.Message{
 		Type: typ, Code: 0,
 		Body: &icmp.Echo{
-			ID:   rand.Intn(65535),
+			ID:   p.id,
 			Seq:  p.sequence,
 			Data: t,
 		},
