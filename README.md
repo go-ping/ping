@@ -78,5 +78,10 @@ use setcap to allow your binary using go-ping to bind to raw sockets
 setcap cap_net_raw=+ep /bin/goping-binary
 ```
 
+## Note on Windows Support:
+
+You have to use "SetPrivileged(true)" like "pinger.SetPrivileged(true)", otherwise you will receive an error:
+"Error listening for ICMP packets: socket: The requested protocol has not been configured into the system, or no implementation for it exists." This even works without admin privileges. Tested on Windows 10
+
 See [this blog](https://sturmflut.github.io/linux/ubuntu/2015/01/17/unprivileged-icmp-sockets-on-linux/)
 and [the Go icmp library](https://godoc.org/golang.org/x/net/icmp) for more details.
