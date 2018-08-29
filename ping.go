@@ -93,9 +93,6 @@ func NewPinger(addr string) (*Pinger, error) {
 		id:       rand.Intn(0xffff),
 		network:  "udp",
 		ipv4:     ipv4,
-		size:     timeSliceLength,
-		network: "udp",
-		ipv4:    ipv4,
 		Size:    timeSliceLength,
 
 		done: make(chan bool),
