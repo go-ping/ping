@@ -145,6 +145,8 @@ type Pinger struct {
 
 	sequence int
 	network  string
+	// Hostname for debugging purposes.
+	hostname string
 }
 
 type packet struct {
@@ -237,6 +239,27 @@ func (p *Pinger) SetAddr(addr string) error {
 // Addr returns the string ip address of the target host.
 func (p *Pinger) Addr() string {
 	return p.addr
+}
+
+// SetSource sets the ip address of the source host, source should
+// be like "127.0.0.1".
+func (p *Pinger) SetSource(source string) {
+	p.source = source
+}
+
+// Addr returns the string ip address of the source host.
+func (p *Pinger) Source() string {
+	return p.source
+}
+
+// SetHostname sets the hostname of the source host
+func (p *Pinger) SetHostname(hostname string) {
+	p.hostname = hostname
+}
+
+// Hostname returns the Hostname of the source host.
+func (p *Pinger) Hostname() string {
+	return p.hostname
 }
 
 // SetPrivileged sets the type of ping pinger will send.
