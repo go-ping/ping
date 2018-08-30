@@ -94,9 +94,6 @@ func NewPinger(addr string) (*Pinger, error) {
 		network:  "udp",
 		ipv4:     ipv4,
 		size:     timeSliceLength,
-		network: "udp",
-		ipv4:    ipv4,
-		Size:    timeSliceLength,
 
 		done: make(chan bool),
 	}, nil
@@ -296,6 +293,7 @@ func (p *Pinger) run() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	signal.Notify(c, syscall.SIGTERM)
+	defer signal.Stop(c)
 
 	for {
 		select {
