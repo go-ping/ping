@@ -94,11 +94,8 @@ func NewPinger(addr string) (*Pinger, error) {
 		network:  "udp",
 		ipv4:     ipv4,
 		size:     timeSliceLength,
-		network: "udp",
-		ipv4:    ipv4,
-		Size:    timeSliceLength,
-
-		done: make(chan bool),
+		Size:     timeSliceLength,
+		done:     make(chan bool),
 	}, nil
 }
 
