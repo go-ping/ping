@@ -44,6 +44,7 @@
 package ping
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -90,12 +91,12 @@ func NewPinger(addr string) (*Pinger, error) {
 		Interval: time.Second,
 		Timeout:  time.Second * 100000,
 		Count:    -1,
-		id:       rand.Intn(0xffff),
+		id:       rand.Intn(math.MaxInt16),
 		network:  "udp",
 		ipv4:     ipv4,
-		Size:    timeSliceLength,
-
-		done: make(chan bool),
+		Size:     timeSliceLength,
+		Tracker:  rand.Int63n(math.MaxInt64),
+		done:     make(chan bool),
 	}, nil
 }
 
@@ -133,6 +134,9 @@ type Pinger struct {
 
 	// Size of packet being sent
 	Size int
+
+	// Tracker: Used to uniquely identify packet when non-priviledged
+	Tracker int64
 
 	// stop chan bool
 	done chan bool
@@ -431,10 +435,24 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return nil
 	}
 
-	// Check if reply from same ID
 	body := m.Body.(*icmp.Echo)
-	if body.ID != p.id {
-		return nil
+	// If we are priviledged, we can match icmp.ID
+	if p.network == "ip" {
+		// Check if reply from same ID
+		if body.ID != p.id {
+			return nil
+		}
+	} else {
+		// If we are not priviledged, we cannot set ID - require kernel ping_table map
+		// need to use contents to identify packet
+		data := IcmpData{}
+		err := json.Unmarshal(body.Data, &data)
+		if err != nil {
+			return err
+		}
+		if data.Tracker != p.Tracker {
+			return nil
+		}
 	}
 
 	outPkt := &Packet{
@@ -444,7 +462,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		outPkt.Rtt = time.Since(bytesToTime(pkt.Data[:timeSliceLength]))
+		data := IcmpData{}
+		err := json.Unmarshal(m.Body.(*icmp.Echo).Data, &data)
+		if err != nil {
+			return err
+		}
+		outPkt.Rtt = time.Since(bytesToTime(data.Bytes))
 		outPkt.Seq = pkt.Seq
 		p.PacketsRecv += 1
 	default:
@@ -460,6 +483,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 	}
 
 	return nil
+}
+
+type IcmpData struct {
+	Bytes   []byte
+	Tracker int64
 }
 
 func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
@@ -479,14 +507,22 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	if p.Size-timeSliceLength != 0 {
 		t = append(t, byteSliceOfSize(p.Size-timeSliceLength)...)
 	}
-	bytes, err := (&icmp.Message{
-		Type: typ, Code: 0,
-		Body: &icmp.Echo{
-			ID:   p.id,
-			Seq:  p.sequence,
-			Data: t,
-		},
-	}).Marshal(nil)
+
+	data, err := json.Marshal(IcmpData{Bytes: t, Tracker: p.Tracker})
+	if err != nil {
+		fmt.Errorf("Unable to marshal data")
+	}
+	body := &icmp.Echo{
+		ID:   p.id,
+		Seq:  p.sequence,
+		Data: data,
+	}
+	msg := &icmp.Message{
+		Type: typ,
+		Code: 0,
+		Body: body,
+	}
+	bytes, err := msg.Marshal(nil)
 	if err != nil {
 		return err
 	}
