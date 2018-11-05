@@ -286,6 +286,7 @@ func (p *Pinger) run() {
 
 	var wg sync.WaitGroup
 	recv := make(chan *packet, 5)
+	defer close(recv)
 	wg.Add(1)
 	go p.recvICMP(conn, recv, &wg)
 
@@ -295,7 +296,9 @@ func (p *Pinger) run() {
 	}
 
 	timeout := time.NewTicker(p.Timeout)
+	defer timeout.Stop()
 	interval := time.NewTicker(p.Interval)
+	defer interval.Stop()
 
 	for {
 		select {
@@ -316,12 +319,11 @@ func (p *Pinger) run() {
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
 			}
-		default:
-			if p.Count > 0 && p.PacketsRecv >= p.Count {
-				close(p.done)
-				wg.Wait()
-				return
-			}
+		}
+		if p.Count > 0 && p.PacketsRecv >= p.Count {
+			close(p.done)
+			wg.Wait()
+			return
 		}
 	}
 }
