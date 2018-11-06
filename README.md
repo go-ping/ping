@@ -25,6 +25,15 @@ if err != nil {
         panic(err)
 }
 
+// listen for ctrl-C signal
+c := make(chan os.Signal, 1)
+signal.Notify(c, os.Interrupt)
+go func() {
+	for _ = range c {
+		pinger.Stop()
+	}
+}()
+
 pinger.OnRecv = func(pkt *ping.Packet) {
         fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
                 pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
@@ -75,13 +84,19 @@ use setcap to allow your binary using go-ping to bind to raw sockets
 (or just run as super-user):
 
 ```
-setcap cap_net_raw=+ep /bin/goping-binary
+setcap cap_net_raw=+ep /bin/go-ping
 ```
-
-## Note on Windows Support:
-
-You have to use "SetPrivileged(true)" like "pinger.SetPrivileged(true)", otherwise you will receive an error:
-"Error listening for ICMP packets: socket: The requested protocol has not been configured into the system, or no implementation for it exists." This even works without admin privileges. Tested on Windows 10
 
 See [this blog](https://sturmflut.github.io/linux/ubuntu/2015/01/17/unprivileged-icmp-sockets-on-linux/)
 and [the Go icmp library](https://godoc.org/golang.org/x/net/icmp) for more details.
+
+## Note on Windows Support:
+
+You must use `pinger.SetPrivileged(true)`, otherwise you will receive an error:
+
+```
+Error listening for ICMP packets: socket: The requested protocol has not been configured into the system, or no implementation for it exists.
+```
+
+This should without admin privileges. Tested on Windows 10.
+

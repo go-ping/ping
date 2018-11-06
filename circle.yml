@@ -1,9 +1,0 @@
-test:
-  post:
-    - go build -race -o ping_linux ./cmd/ping/ping.go
-    - sudo ./ping_linux --privileged -c 2 www.google.com
-    - sudo ./ping_linux --privileged -c 3 -i 200ms www.google.com
-    - sudo ./ping_linux --privileged -c 10 -i 100ms -t 1s www.google.com
-    - GOOS=darwin go build -o ping_darwin ./cmd/ping/ping.go
-    - mv ping_linux $CIRCLE_ARTIFACTS
-    - mv ping_darwin $CIRCLE_ARTIFACTS
