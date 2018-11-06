@@ -48,8 +48,6 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
 	"syscall"
 	"time"
@@ -94,7 +92,6 @@ func NewPinger(addr string) (*Pinger, error) {
 		network:  "udp",
 		ipv4:     ipv4,
 		Size:    timeSliceLength,
-
 		done: make(chan bool),
 	}, nil
 }
@@ -290,14 +287,9 @@ func (p *Pinger) run() {
 
 	timeout := time.NewTicker(p.Timeout)
 	interval := time.NewTicker(p.Interval)
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	signal.Notify(c, syscall.SIGTERM)
 
 	for {
 		select {
-		case <-c:
-			close(p.done)
 		case <-p.done:
 			wg.Wait()
 			return
@@ -323,6 +315,10 @@ func (p *Pinger) run() {
 			}
 		}
 	}
+}
+
+func (p *Pinger) Stop() {
+	close(p.done)
 }
 
 func (p *Pinger) finish() {
@@ -436,7 +432,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	if body.ID != p.id {
 		return nil
 	}
-
+	
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
