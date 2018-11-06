@@ -83,17 +83,18 @@ func NewPinger(addr string) (*Pinger, error) {
 		ipv4 = false
 	}
 
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Pinger{
 		ipaddr:   ipaddr,
 		addr:     addr,
 		Interval: time.Second,
 		Timeout:  time.Second * 100000,
 		Count:    -1,
-		id:       rand.Intn(math.MaxInt16),
+		id:       r.Intn(math.MaxInt16),
 		network:  "udp",
 		ipv4:     ipv4,
 		Size:     timeSliceLength,
-		Tracker:  rand.Int63n(math.MaxInt64),
+		Tracker:  r.Int63n(math.MaxInt64),
 		done:     make(chan bool),
 	}, nil
 }
@@ -454,11 +455,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 	}
-	
+
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
-		Addr: p.addr,
+		Addr:   p.addr,
 	}
 
 	switch pkt := m.Body.(type) {
