@@ -49,8 +49,6 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
 	"syscall"
 	"time"
@@ -164,6 +162,9 @@ type Packet struct {
 
 	// IPAddr is the address of the host being pinged.
 	IPAddr *net.IPAddr
+
+	// Addr is the string address of the host being pinged.
+	Addr string
 
 	// NBytes is the number of bytes in the message.
 	Nbytes int
@@ -294,14 +295,9 @@ func (p *Pinger) run() {
 
 	timeout := time.NewTicker(p.Timeout)
 	interval := time.NewTicker(p.Interval)
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	signal.Notify(c, syscall.SIGTERM)
 
 	for {
 		select {
-		case <-c:
-			close(p.done)
 		case <-p.done:
 			wg.Wait()
 			return
@@ -327,6 +323,10 @@ func (p *Pinger) run() {
 			}
 		}
 	}
+}
+
+func (p *Pinger) Stop() {
+	close(p.done)
 }
 
 func (p *Pinger) finish() {
@@ -454,10 +454,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 	}
-
+	
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
+		Addr: p.addr,
 	}
 
 	switch pkt := m.Body.(type) {
