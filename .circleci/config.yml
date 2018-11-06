@@ -1,0 +1,21 @@
+version: 2.0
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.11
+    working_directory: /go/src/github.com/sparrc/go-ping
+    steps:
+      - checkout
+      - run:
+          name: Build and run some basic tests
+          command: |
+            go get ./...
+            go build -race -o ping_linux ./cmd/ping/ping.go
+            sudo ./ping_linux --privileged -c 2 www.google.com
+            sudo ./ping_linux --privileged -c 3 -i 200ms www.google.com
+            sudo ./ping_linux --privileged -c 10 -i 100ms -t 1s www.google.com
+            GOOS=darwin go build -o ping_darwin ./cmd/ping/ping.go
+      - store_artifacts:
+          path: ./ping_linux
+      - store_artifacts:
+          path: ./ping_darwin
