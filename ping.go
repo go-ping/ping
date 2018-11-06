@@ -310,6 +310,9 @@ func (p *Pinger) run() {
 			wg.Wait()
 			return
 		case <-interval.C:
+			if p.Count > 0 && p.PacketsSent >= p.Count {
+				continue
+			}
 			err = p.sendICMP(conn)
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
@@ -514,7 +517,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 
 	data, err := json.Marshal(IcmpData{Bytes: t, Tracker: p.Tracker})
 	if err != nil {
-		fmt.Errorf("Unable to marshal data")
+		return fmt.Errorf("Unable to marshal data %s", err)
 	}
 	body := &icmp.Echo{
 		ID:   p.id,
