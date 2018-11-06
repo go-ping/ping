@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/sparrc/go-ping"
@@ -52,6 +54,15 @@ func main() {
 		fmt.Printf("ERROR: %s\n", err.Error())
 		return
 	}
+
+	// listen for ctrl-C signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			pinger.Stop()
+		}
+	}()
 
 	pinger.OnRecv = func(pkt *ping.Packet) {
 		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
