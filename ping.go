@@ -137,6 +137,9 @@ type Pinger struct {
 	// Tracker: Used to uniquely identify packet when non-priviledged
 	Tracker int64
 
+	// ToS: Type of Service for outgoing packet
+	Tos int
+
 	// stop chan bool
 	done chan bool
 
@@ -272,6 +275,7 @@ func (p *Pinger) Run() {
 
 func (p *Pinger) run() {
 	var conn *icmp.PacketConn
+
 	if p.ipv4 {
 		if conn = p.listen(ipv4Proto[p.network], p.source); conn == nil {
 			return
@@ -287,6 +291,7 @@ func (p *Pinger) run() {
 	var wg sync.WaitGroup
 	recv := make(chan *packet, 5)
 	defer close(recv)
+
 	wg.Add(1)
 	go p.recvICMP(conn, recv, &wg)
 
@@ -476,7 +481,8 @@ func (p *Pinger) processPacket(recv *packet) error {
 		}
 		outPkt.Rtt = time.Since(bytesToTime(data.Bytes))
 		outPkt.Seq = pkt.Seq
-		p.PacketsRecv += 1
+
+		p.PacketsRecv++
 	default:
 		// Very bad, not sure how this can happen
 		return fmt.Errorf("Error, invalid ICMP echo reply. Body type: %T, %s",
@@ -495,14 +501,17 @@ func (p *Pinger) processPacket(recv *packet) error {
 type IcmpData struct {
 	Bytes   []byte
 	Tracker int64
+	Tos     int
 }
 
 func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	var typ icmp.Type
 	if p.ipv4 {
 		typ = ipv4.ICMPTypeEcho
+		conn.IPv4PacketConn().SetTOS(p.Tos)
 	} else {
 		typ = ipv6.ICMPTypeEchoRequest
+		conn.IPv6PacketConn().SetTrafficClass(p.Tos)
 	}
 
 	var dst net.Addr = p.ipaddr
@@ -515,7 +524,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		t = append(t, byteSliceOfSize(p.Size-timeSliceLength)...)
 	}
 
-	data, err := json.Marshal(IcmpData{Bytes: t, Tracker: p.Tracker})
+	data, err := json.Marshal(IcmpData{Bytes: t, Tracker: p.Tracker, Tos: p.Tos})
 	if err != nil {
 		return fmt.Errorf("Unable to marshal data %s", err)
 	}
@@ -542,8 +551,8 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 				}
 			}
 		}
-		p.PacketsSent += 1
-		p.sequence += 1
+		p.PacketsSent++
+		p.sequence++
 		break
 	}
 	return nil
