@@ -62,6 +62,7 @@ const (
 	timeSliceLength  = 8
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
+	packetTimeoutSec = 5
 )
 
 var (
@@ -128,6 +129,9 @@ type Pinger struct {
 	// OnRecv is called when Pinger receives and processes a packet
 	OnRecv func(*Packet)
 
+	// OnTimeout is called when packet timeout
+	OnTimeout func(*Packet)
+
 	// OnFinish is called when Pinger exits
 	OnFinish func(*Statistics)
 
@@ -149,6 +153,8 @@ type Pinger struct {
 	id       int
 	sequence int
 	network  string
+
+	waitPackets []*Packet
 }
 
 type packet struct {
@@ -172,6 +178,12 @@ type Packet struct {
 
 	// Seq is the ICMP sequence number.
 	Seq int
+
+	// Requested time.
+	ReqTime time.Time
+
+	// if is Timeout.
+	Timeout bool
 }
 
 // Statistics represent the stats of a currently running or finished
@@ -313,6 +325,10 @@ func (p *Pinger) run() {
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				continue
 			}
+
+			// to check timeout.
+			p.checkWaitPacket()
+
 			err = p.sendICMP(conn)
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
@@ -495,6 +511,34 @@ func (p *Pinger) processPacket(recv *packet) error {
 type IcmpData struct {
 	Bytes   []byte
 	Tracker int64
+}
+
+func (p *Pinger) checkWaitPacket() {
+	outPkt := &Packet{
+		IPAddr:  p.ipaddr,
+		Addr:    p.addr,
+		Seq:     p.sequence,
+		ReqTime: time.Now(),
+		Timeout: false,
+	}
+
+	p.waitPackets = append(p.waitPackets, outPkt)
+
+	for _, waitPacket := range p.waitPackets {
+
+		timeDiff := time.Now().Sub(waitPacket.ReqTime)
+
+		if timeDiff.Seconds() > packetTimeoutSec && waitPacket.Timeout == false && outPkt.Nbytes <= 0 {
+			waitPacket.Timeout = true
+
+			timeoutHandler := p.OnTimeout
+			if timeoutHandler != nil {
+				timeoutHandler(waitPacket)
+			}
+		}
+
+	}
+
 }
 
 func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
