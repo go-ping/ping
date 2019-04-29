@@ -174,7 +174,7 @@ type Packet struct {
 	// Seq is the ICMP sequence number.
 	Seq int
 
-	// TTL is the TTL on the packet
+	// TTL is the Time to Live on the packet.
 	Ttl int
 }
 
@@ -462,14 +462,14 @@ func (p *Pinger) processPacket(recv *packet) error {
 	}
 
 	body := m.Body.(*icmp.Echo)
-	// If we are priviledged, we can match icmp.ID
+	// If we are privileged, we can match icmp.ID
 	if p.network == "ip" {
 		// Check if reply from same ID
 		if body.ID != p.id {
 			return nil
 		}
 	} else {
-		// If we are not priviledged, we cannot set ID - require kernel ping_table map
+		// If we are not privileged, we cannot set ID - require kernel ping_table map
 		// need to use contents to identify packet
 		data := IcmpData{}
 		err := json.Unmarshal(body.Data, &data)
