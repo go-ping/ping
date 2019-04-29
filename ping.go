@@ -154,6 +154,7 @@ type Pinger struct {
 type packet struct {
 	bytes  []byte
 	nbytes int
+	ttl    int
 }
 
 // Packet represents a received and processed ICMP echo packet.
@@ -172,6 +173,9 @@ type Packet struct {
 
 	// Seq is the ICMP sequence number.
 	Seq int
+
+	// TTL is the TTL on the packet
+	Ttl int
 }
 
 // Statistics represent the stats of a currently running or finished
@@ -276,10 +280,12 @@ func (p *Pinger) run() {
 		if conn = p.listen(ipv4Proto[p.network], p.source); conn == nil {
 			return
 		}
+		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
 	} else {
 		if conn = p.listen(ipv6Proto[p.network], p.source); conn == nil {
 			return
 		}
+		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
 	}
 	defer conn.Close()
 	defer p.finish()
@@ -397,7 +403,21 @@ func (p *Pinger) recvICMP(
 		default:
 			bytes := make([]byte, 512)
 			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
-			n, _, err := conn.ReadFrom(bytes)
+			var n, ttl int
+			var err error
+			if p.ipv4 {
+				var cm *ipv4.ControlMessage
+				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
+				if cm != nil {
+					ttl = cm.TTL
+				}
+			} else {
+				var cm *ipv6.ControlMessage
+				n, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
+				if cm != nil {
+					ttl = cm.HopLimit
+				}
+			}
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
@@ -410,7 +430,7 @@ func (p *Pinger) recvICMP(
 				}
 			}
 
-			recv <- &packet{bytes: bytes, nbytes: n}
+			recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}
 		}
 	}
 }
@@ -465,6 +485,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
 		Addr:   p.addr,
+		Ttl:    recv.ttl,
 	}
 
 	switch pkt := m.Body.(type) {
