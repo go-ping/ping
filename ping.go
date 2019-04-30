@@ -64,22 +64,27 @@ const (
 	protocolIPv6ICMP = 58
 )
 
-var (
-	ipv4Proto = map[string]string{"ip": "ip4:icmp", "udp": "udp4"}
-	ipv6Proto = map[string]string{"ip": "ip6:ipv6-icmp", "udp": "udp6"}
-)
+// var (
+// 	ipv4Proto = map[string]string{"ip": "ip4:icmp", "udp": "udp4"}
+// 	ipv6Proto = map[string]string{"ip": "ip6:ipv6-icmp", "udp": "udp6"}
+// )
 
 // NewPinger returns a new Pinger struct pointer
 func NewPinger(addr string) (*Pinger, error) {
 	ipaddr, err := net.ResolveIPAddr("ip", addr)
+
 	if err != nil {
 		return nil, err
 	}
 
+	var net string
 	var ipv4 bool
+
 	if isIPv4(ipaddr.IP) {
+		net = "udp4"
 		ipv4 = true
 	} else if isIPv6(ipaddr.IP) {
+		net = "udp6"
 		ipv4 = false
 	}
 
@@ -91,7 +96,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		Timeout:  time.Second * 100000,
 		Count:    -1,
 		id:       r.Intn(math.MaxInt16),
-		network:  "udp",
+		network:  net,
 		ipv4:     ipv4,
 		Size:     timeSliceLength,
 		Tracker:  r.Int63n(math.MaxInt64),
@@ -137,6 +142,10 @@ type Pinger struct {
 	// Tracker: Used to uniquely identify packet when non-priviledged
 	Tracker int64
 
+	ErrorProcessPacket chan error
+
+	ErrorSendICMP chan error
+
 	// stop chan bool
 	done chan bool
 
@@ -144,7 +153,6 @@ type Pinger struct {
 	addr   string
 
 	ipv4     bool
-	source   string
 	size     int
 	id       int
 	sequence int
@@ -213,6 +221,10 @@ type Statistics struct {
 	StdDevRtt time.Duration
 }
 
+func (p *Pinger) GetIpv4() bool {
+	return p.ipv4
+}
+
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
 	var ipv4 bool
@@ -256,9 +268,17 @@ func (p *Pinger) Addr() string {
 // NOTE: setting to true requires that it be run with super-user privileges.
 func (p *Pinger) SetPrivileged(privileged bool) {
 	if privileged {
-		p.network = "ip"
+		if p.ipv4 {
+			p.network = "ip4:icmp"
+		} else {
+			p.network = "ip6:ipv6-icmp"
+		}
 	} else {
-		p.network = "udp"
+		if p.ipv4 {
+			p.network = "udp4"
+		} else {
+			p.network = "udp6"
+		}
 	}
 }
 
@@ -276,18 +296,24 @@ func (p *Pinger) Run() {
 
 func (p *Pinger) run() {
 	var conn *icmp.PacketConn
+	var err error
+
+	if conn, err = p.Listen(); err != nil {
+		return
+	}
+
 	if p.ipv4 {
-		if conn = p.listen(ipv4Proto[p.network], p.source); conn == nil {
-			return
-		}
 		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
 	} else {
-		if conn = p.listen(ipv6Proto[p.network], p.source); conn == nil {
-			return
-		}
 		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
 	}
+
 	defer conn.Close()
+
+	p.DoPing(conn)
+}
+
+func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 	defer p.finish()
 
 	var wg sync.WaitGroup
@@ -310,11 +336,11 @@ func (p *Pinger) run() {
 		select {
 		case <-p.done:
 			wg.Wait()
-			return
+			return nil
 		case <-timeout.C:
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				continue
@@ -332,7 +358,7 @@ func (p *Pinger) run() {
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		}
 	}
 }
@@ -473,6 +499,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		// need to use contents to identify packet
 		data := IcmpData{}
 		err := json.Unmarshal(body.Data, &data)
+		fmt.Printf("Unprivileged unmarshal: %s '%s'", err, body.Data)
 		if err != nil {
 			return err
 		}
@@ -570,14 +597,13 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	return nil
 }
 
-func (p *Pinger) listen(netProto string, source string) *icmp.PacketConn {
-	conn, err := icmp.ListenPacket(netProto, source)
+func (p *Pinger) Listen() (*icmp.PacketConn, error) {
+	conn, err := icmp.ListenPacket(p.network, "")
 	if err != nil {
-		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
 		close(p.done)
-		return nil
+		return nil, fmt.Errorf("error listening for ICMP packets: %s", err.Error())
 	}
-	return conn
+	return conn, nil
 }
 
 func byteSliceOfSize(n int) []byte {
