@@ -284,7 +284,7 @@ func (p *Pinger) SetPrivileged(privileged bool) {
 
 // Privileged returns whether pinger is running in privileged mode.
 func (p *Pinger) Privileged() bool {
-	return p.network == "ip"
+	return p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp"
 }
 
 // Run runs the pinger. This is a blocking function that will exit when it's
@@ -299,6 +299,7 @@ func (p *Pinger) run() {
 	var err error
 
 	if conn, err = p.Listen(); err != nil {
+		fmt.Println("Failed to listen")
 		return
 	}
 
@@ -465,7 +466,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var bytes []byte
 	var proto int
 	if p.ipv4 {
-		if p.network == "ip" {
+		if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
 			bytes = ipv4Payload(recv.bytes)
 		} else {
 			bytes = recv.bytes
@@ -489,7 +490,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	body := m.Body.(*icmp.Echo)
 	// If we are privileged, we can match icmp.ID
-	if p.network == "ip" {
+	if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
 		// Check if reply from same ID
 		if body.ID != p.id {
 			return nil
@@ -499,7 +500,6 @@ func (p *Pinger) processPacket(recv *packet) error {
 		// need to use contents to identify packet
 		data := IcmpData{}
 		err := json.Unmarshal(body.Data, &data)
-		fmt.Printf("Unprivileged unmarshal: %s '%s'", err, body.Data)
 		if err != nil {
 			return err
 		}
@@ -554,7 +554,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	}
 
 	var dst net.Addr = p.ipaddr
-	if p.network == "udp" {
+	if p.network == "udp4" || p.network == "udp6" {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
