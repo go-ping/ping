@@ -44,8 +44,10 @@
 package ping
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -63,11 +65,6 @@ const (
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
 )
-
-// var (
-// 	ipv4Proto = map[string]string{"ip": "ip4:icmp", "udp": "udp4"}
-// 	ipv6Proto = map[string]string{"ip": "ip6:ipv6-icmp", "udp": "udp6"}
-// )
 
 // NewPinger returns a new Pinger struct pointer
 func NewPinger(addr string) (*Pinger, error) {
@@ -99,7 +96,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		network:  net,
 		ipv4:     ipv4,
 		Size:     timeSliceLength,
-		Tracker:  r.Int63n(math.MaxInt64),
+		Tracker:  r.Int31n(math.MaxInt32),
 		done:     make(chan bool),
 	}, nil
 }
@@ -140,7 +137,7 @@ type Pinger struct {
 	Size int
 
 	// Tracker: Used to uniquely identify packet when non-priviledged
-	Tracker int64
+	Tracker int32
 
 	ErrorProcessPacket chan error
 
@@ -417,30 +414,26 @@ func (p *Pinger) Statistics() *Statistics {
 	return &s
 }
 
-func (p *Pinger) recvICMP(
-	conn *icmp.PacketConn,
-	recv chan<- *packet,
-	wg *sync.WaitGroup,
-) {
+func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
 		case <-p.done:
 			return
 		default:
-			bytes := make([]byte, 512)
+			bytesReceived := make([]byte, 512)
 			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
 			var n, ttl int
 			var err error
 			if p.ipv4 {
 				var cm *ipv4.ControlMessage
-				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
+				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytesReceived)
 				if cm != nil {
 					ttl = cm.TTL
 				}
 			} else {
 				var cm *ipv6.ControlMessage
-				n, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
+				n, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytesReceived)
 				if cm != nil {
 					ttl = cm.HopLimit
 				}
@@ -457,30 +450,30 @@ func (p *Pinger) recvICMP(
 				}
 			}
 
-			recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}
+			recv <- &packet{bytes: bytesReceived[:n], nbytes: n, ttl: ttl}
 		}
 	}
 }
 
 func (p *Pinger) processPacket(recv *packet) error {
-	var bytes []byte
+	var bytesReceived []byte
 	var proto int
 	if p.ipv4 {
 		if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
-			bytes = ipv4Payload(recv.bytes)
+			bytesReceived = ipv4Payload(recv.bytes)
 		} else {
-			bytes = recv.bytes
+			bytesReceived = recv.bytes
 		}
 		proto = protocolICMP
 	} else {
-		bytes = recv.bytes
+		bytesReceived = recv.bytes
 		proto = protocolIPv6ICMP
 	}
 
 	var m *icmp.Message
 	var err error
-	if m, err = icmp.ParseMessage(proto, bytes[:recv.nbytes]); err != nil {
-		return fmt.Errorf("Error parsing icmp message")
+	if m, err = icmp.ParseMessage(proto, bytesReceived[:recv.nbytes]); err != nil {
+		return fmt.Errorf("failed to parse icmp message: %v", err)
 	}
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
@@ -488,26 +481,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return nil
 	}
 
-	body := m.Body.(*icmp.Echo)
-	// If we are privileged, we can match icmp.ID
-	if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
-		// Check if reply from same ID
-		if body.ID != p.id {
-			return nil
-		}
-	} else {
-		// If we are not privileged, we cannot set ID - require kernel ping_table map
-		// need to use contents to identify packet
-		data := IcmpData{}
-		err := json.Unmarshal(body.Data, &data)
-		if err != nil {
-			return err
-		}
-		if data.Tracker != p.Tracker {
-			return nil
-		}
-	}
-
+	data := IcmpData{}
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
@@ -517,18 +491,31 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		data := IcmpData{}
-		err := json.Unmarshal(m.Body.(*icmp.Echo).Data, &data)
-		if err != nil {
-			return err
+		// If we are privileged, we can match icmp.ID
+		if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
+			// Check if reply from same ID
+			if pkt.ID != p.id {
+				return nil
+			}
+		} else {
+			// If we are not privileged, we cannot set ID - require kernel ping_table map
+			// need to use contents to identify packet
+			buf := bytes.NewReader(append(pkt.Data, make([]byte, 1)...))
+			err := gob.NewDecoder(buf).Decode(&data)
+			if err != nil && err != io.EOF {
+				return fmt.Errorf("unable to decode data: %v", err)
+			}
+
+			if data.Tracker != p.Tracker {
+				return nil
+			}
 		}
+
 		outPkt.Rtt = time.Since(bytesToTime(data.Bytes))
 		outPkt.Seq = pkt.Seq
-		p.PacketsRecv += 1
+		p.PacketsRecv++
 	default:
-		// Very bad, not sure how this can happen
-		return fmt.Errorf("Error, invalid ICMP echo reply. Body type: %T, %s",
-			pkt, pkt)
+		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
 	}
 
 	p.rtts = append(p.rtts, outPkt.Rtt)
@@ -542,7 +529,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 type IcmpData struct {
 	Bytes   []byte
-	Tracker int64
+	Tracker int32
 }
 
 func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
@@ -563,35 +550,39 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		t = append(t, byteSliceOfSize(p.Size-timeSliceLength)...)
 	}
 
-	data, err := json.Marshal(IcmpData{Bytes: t, Tracker: p.Tracker})
+	data := bytes.Buffer{}
+	err := gob.NewEncoder(&data).Encode(IcmpData{Bytes: t, Tracker: p.Tracker})
 	if err != nil {
-		return fmt.Errorf("Unable to marshal data %s", err)
+		return fmt.Errorf("unable to encode data: %v", err)
 	}
+
 	body := &icmp.Echo{
 		ID:   p.id,
 		Seq:  p.sequence,
-		Data: data,
+		Data: data.Bytes(),
 	}
+
 	msg := &icmp.Message{
 		Type: typ,
 		Code: 0,
 		Body: body,
 	}
-	bytes, err := msg.Marshal(nil)
+
+	msgBytes, err := msg.Marshal(nil)
 	if err != nil {
 		return err
 	}
 
 	for {
-		if _, err := conn.WriteTo(bytes, dst); err != nil {
+		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
 					continue
 				}
 			}
 		}
-		p.PacketsSent += 1
-		p.sequence += 1
+		p.PacketsSent++
+		p.sequence++
 		break
 	}
 	return nil
@@ -601,7 +592,7 @@ func (p *Pinger) Listen() (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(p.network, "")
 	if err != nil {
 		close(p.done)
-		return nil, fmt.Errorf("error listening for ICMP packets: %s", err.Error())
+		return nil, fmt.Errorf("error listening for ICMP packets: %v", err)
 	}
 	return conn, nil
 }
