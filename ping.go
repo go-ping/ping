@@ -44,10 +44,9 @@
 package ping
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/binary"
+	"errors"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -138,10 +137,6 @@ type Pinger struct {
 
 	// Tracker: Used to uniquely identify packet when non-priviledged
 	Tracker int32
-
-	ErrorProcessPacket chan error
-
-	ErrorSendICMP chan error
 
 	// stop chan bool
 	done chan bool
@@ -456,23 +451,17 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 }
 
 func (p *Pinger) processPacket(recv *packet) error {
-	var bytesReceived []byte
+	receivedAt := time.Now()
 	var proto int
 	if p.ipv4 {
-		if p.network == "ip4:icmp" || p.network == "ip6:ipv6-icmp" {
-			bytesReceived = ipv4Payload(recv.bytes)
-		} else {
-			bytesReceived = recv.bytes
-		}
 		proto = protocolICMP
 	} else {
-		bytesReceived = recv.bytes
 		proto = protocolIPv6ICMP
 	}
 
 	var m *icmp.Message
 	var err error
-	if m, err = icmp.ParseMessage(proto, bytesReceived[:recv.nbytes]); err != nil {
+	if m, err = icmp.ParseMessage(proto, recv.bytes[:recv.nbytes]); err != nil {
 		return fmt.Errorf("failed to parse icmp message: %v", err)
 	}
 
@@ -481,7 +470,6 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return nil
 	}
 
-	data := IcmpData{}
 	outPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
@@ -497,21 +485,20 @@ func (p *Pinger) processPacket(recv *packet) error {
 			if pkt.ID != p.id {
 				return nil
 			}
-		} else {
-			// If we are not privileged, we cannot set ID - require kernel ping_table map
-			// need to use contents to identify packet
-			buf := bytes.NewReader(append(pkt.Data, make([]byte, 1)...))
-			err := gob.NewDecoder(buf).Decode(&data)
-			if err != nil && err != io.EOF {
-				return fmt.Errorf("unable to decode data: %v", err)
-			}
-
-			if data.Tracker != p.Tracker {
-				return nil
-			}
 		}
 
-		outPkt.Rtt = time.Since(bytesToTime(data.Bytes))
+		if len(pkt.Data) < 12 {
+			return errors.New("insufficient data received")
+		}
+
+		tracker := bytesToInt(pkt.Data[8:])
+		timestamp := bytesToTime(pkt.Data)
+
+		if tracker != p.Tracker {
+			return nil
+		}
+
+		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
 		p.PacketsRecv++
 	default:
@@ -527,11 +514,6 @@ func (p *Pinger) processPacket(recv *packet) error {
 	return nil
 }
 
-type IcmpData struct {
-	Bytes   []byte
-	Tracker int32
-}
-
 func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	var typ icmp.Type
 	if p.ipv4 {
@@ -545,21 +527,15 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	t := timeToBytes(time.Now())
-	if p.Size-timeSliceLength != 0 {
-		t = append(t, byteSliceOfSize(p.Size-timeSliceLength)...)
-	}
-
-	data := bytes.Buffer{}
-	err := gob.NewEncoder(&data).Encode(IcmpData{Bytes: t, Tracker: p.Tracker})
-	if err != nil {
-		return fmt.Errorf("unable to encode data: %v", err)
+	t := append(timeToBytes(time.Now()), intToBytes(p.Tracker)...)
+	if p.Size-timeSliceLength-4 > 0 {
+		t = append(t, byteSliceOfSize(p.Size-4)...)
 	}
 
 	body := &icmp.Echo{
 		ID:   p.id,
 		Seq:  p.sequence,
-		Data: data.Bytes(),
+		Data: t,
 	}
 
 	msg := &icmp.Message{
@@ -606,20 +582,22 @@ func byteSliceOfSize(n int) []byte {
 	return b
 }
 
-func ipv4Payload(b []byte) []byte {
-	if len(b) < ipv4.HeaderLen {
-		return b
-	}
-	hdrlen := int(b[0]&0x0f) << 2
-	return b[hdrlen:]
-}
-
 func bytesToTime(b []byte) time.Time {
 	var nsec int64
 	for i := uint8(0); i < 8; i++ {
 		nsec += int64(b[i]) << ((7 - i) * 8)
 	}
 	return time.Unix(nsec/1000000000, nsec%1000000000)
+}
+
+func bytesToInt(b []byte) int32 {
+	return int32(binary.BigEndian.Uint32(b))
+}
+
+func intToBytes(tracker int32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(tracker))
+	return b
 }
 
 func isIPv4(ip net.IP) bool {
