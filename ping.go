@@ -51,7 +51,6 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -90,6 +89,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		addr:     addr,
 		Interval: time.Second,
 		Timeout:  time.Second * 100000,
+		Deadline: time.Minute * 100000,
 		Count:    -1,
 		id:       r.Intn(math.MaxInt16),
 		network:  net,
@@ -108,6 +108,10 @@ type Pinger struct {
 	// Timeout specifies a timeout before ping exits, regardless of how many
 	// packets have been received.
 	Timeout time.Duration
+
+	// Deadline specifies a per-ping timeout before ping exits, regardless of how many
+	// packets have been received.
+	Deadline time.Duration
 
 	// Count tells pinger to stop after sending (and receiving) Count echo
 	// packets. If this option is not specified, pinger will operate until
@@ -213,6 +217,7 @@ type Statistics struct {
 	StdDevRtt time.Duration
 }
 
+// GetIpv4 returns whether ipv4 is used.
 func (p *Pinger) GetIpv4() bool {
 	return p.ipv4
 }
@@ -290,7 +295,7 @@ func (p *Pinger) run() {
 	var conn *icmp.PacketConn
 	var err error
 
-	if conn, err = p.Listen(); err != nil {
+	if conn, err = p.Listen(""); err != nil {
 		fmt.Println("Failed to listen")
 		return
 	}
@@ -303,7 +308,9 @@ func (p *Pinger) run() {
 
 	defer conn.Close()
 
-	p.DoPing(conn)
+	if err = p.DoPing(conn); err != nil {
+		fmt.Println(err.Error())
+	}
 }
 
 func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
@@ -317,7 +324,7 @@ func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 
 	err := p.sendICMP(conn)
 	if err != nil {
-		fmt.Println(err.Error())
+		return err
 	}
 
 	timeout := time.NewTicker(p.Timeout)
@@ -340,12 +347,12 @@ func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 			}
 			err = p.sendICMP(conn)
 			if err != nil {
-				fmt.Println("FATAL: ", err.Error())
+				return err
 			}
 		case r := <-recv:
 			err := p.processPacket(r)
 			if err != nil {
-				fmt.Println("FATAL: ", err.Error())
+				return err
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
@@ -406,6 +413,7 @@ func (p *Pinger) Statistics() *Statistics {
 		s.StdDevRtt = time.Duration(math.Sqrt(
 			float64(sumsquares / time.Duration(len(p.rtts)))))
 	}
+
 	return &s
 }
 
@@ -549,23 +557,21 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	for {
-		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
-			if neterr, ok := err.(*net.OpError); ok {
-				if neterr.Err == syscall.ENOBUFS {
-					continue
-				}
-			}
-		}
-		p.PacketsSent++
-		p.sequence++
-		break
+	if err := conn.SetDeadline(time.Now().Add(p.Deadline)); err != nil {
+		return err
 	}
+	if _, err := conn.WriteTo(msgBytes, dst); err != nil {
+		return err
+	}
+	p.PacketsSent++
+	p.sequence++
+
 	return nil
 }
 
-func (p *Pinger) Listen() (*icmp.PacketConn, error) {
-	conn, err := icmp.ListenPacket(p.network, "")
+// Listen listens on a socket for icmp traffic.
+func (p *Pinger) Listen(addr string) (*icmp.PacketConn, error) {
+	conn, err := icmp.ListenPacket(p.network, addr)
 	if err != nil {
 		close(p.done)
 		return nil, fmt.Errorf("error listening for ICMP packets: %v", err)
