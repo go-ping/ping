@@ -44,6 +44,8 @@
 package ping
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -60,6 +62,7 @@ import (
 
 const (
 	timeSliceLength  = 8
+	trackerLength    = 4
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
 )
@@ -94,7 +97,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		id:       r.Intn(math.MaxInt16),
 		network:  net,
 		ipv4:     ipv4,
-		Size:     timeSliceLength,
+		Size:     timeSliceLength + trackerLength,
 		Tracker:  r.Int31n(math.MaxInt32),
 		done:     make(chan bool),
 	}, nil
@@ -300,23 +303,23 @@ func (p *Pinger) run() {
 		return
 	}
 
+	defer conn.Close()
+
+	if err = p.DoPing(context.Background(), conn); err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func (p *Pinger) DoPing(ctx context.Context, conn *icmp.PacketConn) error {
+	defer p.finish()
+
 	if p.ipv4 {
 		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
 	} else {
 		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
 	}
 
-	defer conn.Close()
-
-	if err = p.DoPing(conn); err != nil {
-		fmt.Println(err.Error())
-	}
-}
-
-func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
-	defer p.finish()
-
-	var wg sync.WaitGroup
+	wg := sync.WaitGroup{}
 	recv := make(chan *packet, 5)
 	defer close(recv)
 	wg.Add(1)
@@ -327,8 +330,13 @@ func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	timeout := time.NewTicker(p.Timeout)
-	defer timeout.Stop()
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, p.Timeout)
+	defer cancel()
+
+	if p.Interval.Seconds() < .2 {
+		p.Interval = time.Second
+	}
 	interval := time.NewTicker(p.Interval)
 	defer interval.Stop()
 
@@ -337,7 +345,7 @@ func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 		case <-p.done:
 			wg.Wait()
 			return nil
-		case <-timeout.C:
+		case <-ctx.Done():
 			close(p.done)
 			wg.Wait()
 			return nil
@@ -363,6 +371,7 @@ func (p *Pinger) DoPing(conn *icmp.PacketConn) error {
 	}
 }
 
+// Stop ceases the pinging.
 func (p *Pinger) Stop() {
 	close(p.done)
 }
@@ -424,10 +433,11 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 		case <-p.done:
 			return
 		default:
-			bytesReceived := make([]byte, 512)
-			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
 			var n, ttl int
 			var err error
+
+			bytesReceived := make([]byte, 512)
+			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
 			if p.ipv4 {
 				var cm *ipv4.ControlMessage
 				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytesReceived)
@@ -474,7 +484,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	}
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
-		// Not an echo reply, ignore it
+		// Likely an `ICMPTypeDestinationUnreachable`, ignore it.
 		return nil
 	}
 
@@ -495,12 +505,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 			}
 		}
 
-		if len(pkt.Data) < 12 {
+		if len(pkt.Data) < timeSliceLength+trackerLength {
 			return errors.New("insufficient data received")
 		}
 
-		tracker := bytesToInt(pkt.Data[8:])
-		timestamp := bytesToTime(pkt.Data)
+		tracker := bytesToInt(pkt.Data[timeSliceLength:])
+		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 
 		if tracker != p.Tracker {
 			return nil
@@ -530,14 +540,9 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		typ = ipv6.ICMPTypeEchoRequest
 	}
 
-	var dst net.Addr = p.ipaddr
-	if p.network == "udp4" || p.network == "udp6" {
-		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
-	}
-
 	t := append(timeToBytes(time.Now()), intToBytes(p.Tracker)...)
-	if p.Size-timeSliceLength-4 > 0 {
-		t = append(t, byteSliceOfSize(p.Size-4)...)
+	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
+		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
 	}
 
 	body := &icmp.Echo{
@@ -557,9 +562,15 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	if err := conn.SetDeadline(time.Now().Add(p.Deadline)); err != nil {
+	if err := conn.SetWriteDeadline(time.Now().Add(p.Deadline)); err != nil {
 		return err
 	}
+
+	var dst net.Addr = p.ipaddr
+	if p.network == "udp4" || p.network == "udp6" {
+		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
+	}
+
 	if _, err := conn.WriteTo(msgBytes, dst); err != nil {
 		return err
 	}
@@ -577,15 +588,6 @@ func (p *Pinger) Listen(addr string) (*icmp.PacketConn, error) {
 		return nil, fmt.Errorf("error listening for ICMP packets: %v", err)
 	}
 	return conn, nil
-}
-
-func byteSliceOfSize(n int) []byte {
-	b := make([]byte, n)
-	for i := 0; i < len(b); i++ {
-		b[i] = 1
-	}
-
-	return b
 }
 
 func bytesToTime(b []byte) time.Time {
