@@ -320,8 +320,8 @@ func (p *Pinger) DoPing(ctx context.Context, conn *icmp.PacketConn) error {
 	}
 
 	wg := sync.WaitGroup{}
-	recv := make(chan *packet, 5)
-	defer close(recv)
+	recv := make(chan *packet, 100)
+
 	wg.Add(1)
 	go p.recvICMP(conn, recv, &wg)
 
@@ -330,15 +330,15 @@ func (p *Pinger) DoPing(ctx context.Context, conn *icmp.PacketConn) error {
 		return err
 	}
 
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, p.Timeout)
-	defer cancel()
-
 	if p.Interval.Seconds() < .2 {
 		p.Interval = time.Second
 	}
 	interval := time.NewTicker(p.Interval)
 	defer interval.Stop()
+
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, p.Timeout)
+	defer cancel()
 
 	for {
 		select {
@@ -365,6 +365,14 @@ func (p *Pinger) DoPing(ctx context.Context, conn *icmp.PacketConn) error {
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
+			for buffR := range recv {
+				// flush bufferred channel
+				err := p.processPacket(buffR)
+				if err != nil {
+					return err
+				}
+			}
+
 			wg.Wait()
 			return nil
 		}
@@ -431,13 +439,14 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 	for {
 		select {
 		case <-p.done:
+			close(recv)
 			return
 		default:
 			var n, ttl int
 			var err error
 
-			bytesReceived := make([]byte, 512)
-			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
+			bytesReceived := make([]byte, 65535)
+			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 300))
 			if p.ipv4 {
 				var cm *ipv4.ControlMessage
 				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytesReceived)
@@ -454,6 +463,9 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
+						if n > 0 {
+							fmt.Println("Timed out, got: ", bytesReceived[:n])
+						}
 						// Read timeout
 						continue
 					} else {
@@ -461,6 +473,8 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 						return
 					}
 				}
+				// do something with other error
+				fmt.Println("Some other error - ", err.Error())
 			}
 
 			recv <- &packet{bytes: bytesReceived[:n], nbytes: n, ttl: ttl}
@@ -508,7 +522,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		if len(pkt.Data) < timeSliceLength+trackerLength {
 			return errors.New("insufficient data received")
 		}
-
+		// todo: check if we can cache
 		tracker := bytesToInt(pkt.Data[timeSliceLength:])
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 
@@ -581,7 +595,13 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 }
 
 // Listen listens on a socket for icmp traffic.
+// return something consumable by a "pinger" (object, channel, etc)
+// map[string]chan if packet comes in for id, send to map[id]channel
+// listenAndRead?? read divvys out incoming data
+//
+// newListener(interface) , has start(), handle()
 func (p *Pinger) Listen(addr string) (*icmp.PacketConn, error) {
+	// no more than one listener per interface
 	conn, err := icmp.ListenPacket(p.network, addr)
 	if err != nil {
 		close(p.done)
