@@ -174,7 +174,7 @@ type Packet struct {
 	// Seq is the ICMP sequence number.
 	Seq int
 
-	// TTL is the TTL on the packet
+	// TTL is the Time To Live on the packet.
 	Ttl int
 }
 
