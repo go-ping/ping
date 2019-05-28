@@ -220,11 +220,6 @@ type Statistics struct {
 	StdDevRtt time.Duration
 }
 
-// GetIpv4 returns whether ipv4 is used.
-func (p *Pinger) GetIpv4() bool {
-	return p.ipv4
-}
-
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
 	var ipv4 bool
@@ -463,18 +458,13 @@ func (p *Pinger) recvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *sync.W
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
-						if n > 0 {
-							fmt.Println("Timed out, got: ", bytesReceived[:n])
-						}
-						// Read timeout
 						continue
 					} else {
 						close(p.done)
 						return
 					}
 				}
-				// do something with other error
-				fmt.Println("Some other error - ", err.Error())
+				continue
 			}
 
 			recv <- &packet{bytes: bytesReceived[:n], nbytes: n, ttl: ttl}
@@ -522,7 +512,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		if len(pkt.Data) < timeSliceLength+trackerLength {
 			return errors.New("insufficient data received")
 		}
-		// todo: check if we can cache
+
 		tracker := bytesToInt(pkt.Data[timeSliceLength:])
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 
