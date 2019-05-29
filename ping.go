@@ -137,6 +137,9 @@ type Pinger struct {
 	// Tracker: Used to uniquely identify packet when non-priviledged
 	Tracker int64
 
+	// Source is the source IP address
+	Source string
+
 	// stop chan bool
 	done chan bool
 
@@ -144,7 +147,6 @@ type Pinger struct {
 	addr   string
 
 	ipv4     bool
-	source   string
 	size     int
 	id       int
 	sequence int
@@ -277,12 +279,12 @@ func (p *Pinger) Run() {
 func (p *Pinger) run() {
 	var conn *icmp.PacketConn
 	if p.ipv4 {
-		if conn = p.listen(ipv4Proto[p.network], p.source); conn == nil {
+		if conn = p.listen(ipv4Proto[p.network]); conn == nil {
 			return
 		}
 		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
 	} else {
-		if conn = p.listen(ipv6Proto[p.network], p.source); conn == nil {
+		if conn = p.listen(ipv6Proto[p.network]); conn == nil {
 			return
 		}
 		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
@@ -570,8 +572,8 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	return nil
 }
 
-func (p *Pinger) listen(netProto string, source string) *icmp.PacketConn {
-	conn, err := icmp.ListenPacket(netProto, source)
+func (p *Pinger) listen(netProto string) *icmp.PacketConn {
+	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
 		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
 		close(p.done)
