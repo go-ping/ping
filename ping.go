@@ -442,7 +442,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var proto int
 	if p.ipv4 {
 		if p.network == "ip" {
-			bytes = ipv4Payload(recv.bytes)
+			bytes = ipv4Payload(recv)
 		} else {
 			bytes = recv.bytes
 		}
@@ -591,11 +591,13 @@ func byteSliceOfSize(n int) []byte {
 	return b
 }
 
-func ipv4Payload(b []byte) []byte {
+func ipv4Payload(recv *packet) []byte {
+	b := recv.bytes
 	if len(b) < ipv4.HeaderLen {
 		return b
 	}
 	hdrlen := int(b[0]&0x0f) << 2
+	recv.nbytes -= hdrlen
 	return b[hdrlen:]
 }
 
