@@ -46,7 +46,6 @@ package ping
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -486,7 +485,8 @@ func (p *Pinger) processPacket(recv *packet) error {
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
-			return errors.New("insufficient data received")
+			fmt.Printf("insufficient data received; got: %d %v",
+				len(pkt.Data), pkt.Data)
 		}
 
 		tracker := bytesToInt(pkt.Data[timeSliceLength:])
