@@ -2,7 +2,7 @@ version: 2.0
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.11
+      - image: circleci/golang:1.12
     working_directory: /go/src/github.com/sparrc/go-ping
     steps:
       - checkout
@@ -10,6 +10,8 @@ jobs:
           name: Build and run some basic tests
           command: |
             go get ./...
+            go vet ./...
+            go test ./... -cover -race
             go build -race -o ping_linux ./cmd/ping/ping.go
             sudo ./ping_linux --privileged -c 2 www.google.com
             sudo ./ping_linux --privileged -c 3 -i 200ms www.google.com
