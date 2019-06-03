@@ -485,7 +485,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
-			fmt.Printf("insufficient data received; got: %d %v",
+			return fmt.Errorf("insufficient data received; got: %d %v",
 				len(pkt.Data), pkt.Data)
 		}
 
