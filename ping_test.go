@@ -2,8 +2,6 @@ package ping
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"net"
 	"runtime/debug"
 	"testing"
@@ -11,7 +9,6 @@ import (
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 func TestNewPingerValid(t *testing.T) {
@@ -308,137 +305,5 @@ func BenchmarkProcessPacket(b *testing.B) {
 
 	for k := 0; k < b.N; k++ {
 		pinger.processPacket(&pkt)
-	}
-}
-
-func BenchmarkProcessPacketOld(b *testing.B) {
-	pinger, _ := NewPinger("127.0.0.1")
-
-	pinger.ipv4 = true
-	pinger.addr = "127.0.0.1"
-	pinger.network = "ip4:icmp"
-	pinger.id = 123
-	pinger.Tracker = 456
-
-	type IcmpData struct {
-		Bytes   []byte
-		Tracker int64
-	}
-
-	byteSliceOfSize := func(n int) []byte {
-		b := make([]byte, n)
-		for i := 0; i < len(b); i++ {
-			b[i] = 1
-		}
-
-		return b
-	}
-
-	t := timeToBytes(time.Now())
-	if pinger.Size-timeSliceLength != 0 {
-		t = append(t, byteSliceOfSize(pinger.Size-timeSliceLength)...)
-	}
-
-	data, _ := json.Marshal(IcmpData{Bytes: t, Tracker: pinger.Tracker})
-
-	body := &icmp.Echo{
-		ID:   pinger.id,
-		Seq:  pinger.sequence,
-		Data: data,
-	}
-
-	msg := &icmp.Message{
-		Type: ipv4.ICMPTypeEchoReply,
-		Code: 0,
-		Body: body,
-	}
-
-	msgBytes, _ := msg.Marshal(nil)
-
-	pkt := packet{
-		nbytes: len(msgBytes),
-		bytes:  msgBytes,
-	}
-
-	processPacket := func(p *Pinger, recv *packet) error {
-		var bytes []byte
-		var proto int
-		if p.ipv4 {
-			if p.network == "ip" {
-				bytes = ipv4Payload(recv.bytes)
-			} else {
-				bytes = recv.bytes
-			}
-			proto = protocolICMP
-		} else {
-			bytes = recv.bytes
-			proto = protocolIPv6ICMP
-		}
-
-		var m *icmp.Message
-		var err error
-		if m, err = icmp.ParseMessage(proto, bytes[:recv.nbytes]); err != nil {
-			return fmt.Errorf("Error parsing icmp message")
-		}
-
-		if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
-			// Not an echo reply, ignore it
-			return nil
-		}
-
-		body := m.Body.(*icmp.Echo)
-		// If we are priviledged, we can match icmp.ID
-		if p.network == "ip" {
-			// Check if reply from same ID
-			if body.ID != p.id {
-				return nil
-			}
-		} else {
-			// If we are not priviledged, we cannot set ID - require kernel ping_table map
-			// need to use contents to identify packet
-			data := IcmpData{}
-			err := json.Unmarshal(body.Data, &data)
-			if err != nil {
-				return err
-			}
-			if data.Tracker != p.Tracker {
-				return nil
-			}
-		}
-
-		outPkt := &Packet{
-			Nbytes: recv.nbytes,
-			IPAddr: p.ipaddr,
-			Addr:   p.addr,
-			Ttl:    recv.ttl,
-		}
-
-		switch pkt := m.Body.(type) {
-		case *icmp.Echo:
-			data := IcmpData{}
-			err := json.Unmarshal(m.Body.(*icmp.Echo).Data, &data)
-			if err != nil {
-				return err
-			}
-			outPkt.Rtt = time.Since(bytesToTime(data.Bytes))
-			outPkt.Seq = pkt.Seq
-			p.PacketsRecv++
-		default:
-			// Very bad, not sure how this can happen
-			return fmt.Errorf("Error, invalid ICMP echo reply. Body type: %T, %s",
-				pkt, pkt)
-		}
-
-		p.rtts = append(p.rtts, outPkt.Rtt)
-		handler := p.OnRecv
-		if handler != nil {
-			handler(outPkt)
-		}
-
-		return nil
-	}
-
-	for k := 0; k < b.N; k++ {
-		processPacket(pinger, &pkt)
 	}
 }
