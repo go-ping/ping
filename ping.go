@@ -441,23 +441,16 @@ func (p *Pinger) recvICMP(
 
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
-	var bytes []byte
 	var proto int
 	if p.ipv4 {
-		if p.network == "ip" {
-			bytes = ipv4Payload(recv)
-		} else {
-			bytes = recv.bytes
-		}
 		proto = protocolICMP
 	} else {
-		bytes = recv.bytes
 		proto = protocolIPv6ICMP
 	}
 
 	var m *icmp.Message
 	var err error
-	if m, err = icmp.ParseMessage(proto, bytes[:recv.nbytes]); err != nil {
+	if m, err = icmp.ParseMessage(proto, recv.bytes); err != nil {
 		return fmt.Errorf("error parsing icmp message: %s", err.Error())
 	}
 
@@ -475,8 +468,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-
-		// If we are priviledged, we can match icmp.ID
+		// If we are privileged, we can match icmp.ID
 		if p.network == "ip" {
 			// Check if reply from same ID
 			if pkt.ID != p.id {
@@ -572,16 +564,6 @@ func (p *Pinger) listen(netProto string) *icmp.PacketConn {
 		return nil
 	}
 	return conn
-}
-
-func ipv4Payload(recv *packet) []byte {
-	b := recv.bytes
-	if len(b) < ipv4.HeaderLen {
-		return b
-	}
-	hdrlen := int(b[0]&0x0f) << 2
-	recv.nbytes -= hdrlen
-	return b[hdrlen:]
 }
 
 func bytesToTime(b []byte) time.Time {
