@@ -179,7 +179,7 @@ type Packet struct {
 	Seq int
 
 	// TTL is the Time To Live on the packet.
-	Ttl int
+	TTL int
 }
 
 // Statistics represent the stats of a currently running or finished
@@ -470,7 +470,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
 		Addr:   p.addr,
-		Ttl:    recv.ttl,
+		TTL:    recv.ttl,
 	}
 
 	switch pkt := m.Body.(type) {
