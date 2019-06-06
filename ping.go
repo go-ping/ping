@@ -127,6 +127,9 @@ type Pinger struct {
 	// rtts is all of the Rtts
 	rtts []time.Duration
 
+	// ttls is all of the Ttls
+	ttls []int
+
 	// OnRecv is called when Pinger receives and processes a packet
 	OnRecv func(*Packet)
 
@@ -215,6 +218,9 @@ type Statistics struct {
 	// StdDevRtt is the standard deviation of the round-trip times sent via
 	// this pinger.
 	StdDevRtt time.Duration
+
+	// Ttts is all of the TTLs sent via this pinger.
+	Ttls []int
 }
 
 // SetIPAddr sets the ip address of the target host.
@@ -381,6 +387,7 @@ func (p *Pinger) Statistics() *Statistics {
 		IPAddr:      p.ipaddr,
 		MaxRtt:      max,
 		MinRtt:      min,
+		Ttls:        p.ttls,
 	}
 	if len(p.rtts) > 0 {
 		s.AvgRtt = total / time.Duration(len(p.rtts))
@@ -505,6 +512,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	}
 
 	p.rtts = append(p.rtts, outPkt.Rtt)
+	p.ttls = append(p.ttls, outPkt.TTL)
 	handler := p.OnRecv
 	if handler != nil {
 		handler(outPkt)
