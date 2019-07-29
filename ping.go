@@ -47,6 +47,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -69,6 +70,9 @@ const (
 var (
 	ipv4Proto = map[string]string{"ip": "ip4:icmp", "udp": "udp4"}
 	ipv6Proto = map[string]string{"ip": "ip6:ipv6-icmp", "udp": "udp6"}
+
+	ErrCanceled = errors.New("stop")
+	ErrTimeout  = errors.New("timeout")
 )
 
 // NewPinger returns a new Pinger struct pointer
@@ -270,11 +274,11 @@ func (p *Pinger) Privileged() bool {
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
-func (p *Pinger) Run(ctx context.Context) {
-	p.run(ctx)
+func (p *Pinger) Run(ctx context.Context) error {
+	return p.run(ctx)
 }
 
-func (p *Pinger) run(ctx context.Context) {
+func (p *Pinger) run(ctx context.Context) (rerr error) {
 	var conn *icmp.PacketConn
 	if p.ipv4 {
 		if conn = p.listen(ipv4Proto[p.network]); conn == nil {
@@ -310,10 +314,12 @@ FOR_LOOP:
 		select {
 		case <-ctx.Done():
 			//cancel() //NO NEED to call directly, if ctx was done, ctxRecv would done autoly
+			rerr = ErrCanceled
 			break FOR_LOOP
 
 		case <-timeout.C:
 			cancel()
+			rerr = ErrTimeout
 			break FOR_LOOP
 
 		case <-interval.C:
@@ -345,6 +351,7 @@ FOR_LOOP:
 	for v := range recv {
 		_ = v
 	}
+	return
 }
 
 func (p *Pinger) finish() {
