@@ -45,12 +45,12 @@ package ping
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
 	"net"
-	"sync"
 	"syscall"
 	"time"
 
@@ -97,7 +97,6 @@ func NewPinger(addr string) (*Pinger, error) {
 		ipv4:     ipv4,
 		Size:     timeSliceLength,
 		Tracker:  r.Int63n(math.MaxInt64),
-		done:     make(chan bool),
 	}, nil
 }
 
@@ -141,9 +140,6 @@ type Pinger struct {
 
 	// Source is the source IP address
 	Source string
-
-	// stop chan bool
-	done chan bool
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -274,11 +270,11 @@ func (p *Pinger) Privileged() bool {
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
-func (p *Pinger) Run() {
-	p.run()
+func (p *Pinger) Run(ctx context.Context) {
+	p.run(ctx)
 }
 
-func (p *Pinger) run() {
+func (p *Pinger) run(ctx context.Context) {
 	var conn *icmp.PacketConn
 	if p.ipv4 {
 		if conn = p.listen(ipv4Proto[p.network]); conn == nil {
@@ -294,11 +290,10 @@ func (p *Pinger) run() {
 	defer conn.Close()
 	defer p.finish()
 
-	var wg sync.WaitGroup
 	recv := make(chan *packet, 5)
-	defer close(recv)
-	wg.Add(1)
-	go p.recvICMP(conn, recv, &wg)
+
+	recvCtx, cancel := context.WithCancel(ctx)
+	go p.recvICMP(conn, recv, recvCtx)
 
 	err := p.sendICMP(conn)
 	if err != nil {
@@ -310,15 +305,17 @@ func (p *Pinger) run() {
 	interval := time.NewTicker(p.Interval)
 	defer interval.Stop()
 
+FOR_LOOP:
 	for {
 		select {
-		case <-p.done:
-			wg.Wait()
-			return
+		case <-ctx.Done():
+			//cancel() //NO NEED to call directly, if ctx was done, ctxRecv would done autoly
+			break FOR_LOOP
+
 		case <-timeout.C:
-			close(p.done)
-			wg.Wait()
-			return
+			cancel()
+			break FOR_LOOP
+
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				continue
@@ -327,22 +324,27 @@ func (p *Pinger) run() {
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
 			}
-		case r := <-recv:
+
+		case r, ok := <-recv:
+			if !ok {
+				cancel()
+				break FOR_LOOP
+			}
 			err := p.processPacket(r)
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
-			wg.Wait()
-			return
+			cancel()
+			break FOR_LOOP
 		}
 	}
-}
 
-func (p *Pinger) Stop() {
-	close(p.done)
+	//wait for recv quit
+	for v := range recv {
+		_ = v
+	}
 }
 
 func (p *Pinger) finish() {
@@ -397,13 +399,14 @@ func (p *Pinger) Statistics() *Statistics {
 func (p *Pinger) recvICMP(
 	conn *icmp.PacketConn,
 	recv chan<- *packet,
-	wg *sync.WaitGroup,
+	ctx context.Context,
 ) {
-	defer wg.Done()
+
+FOR_LOOP:
 	for {
 		select {
-		case <-p.done:
-			return
+		case <-ctx.Done():
+			break FOR_LOOP
 		default:
 			bytes := make([]byte, 512)
 			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
@@ -428,8 +431,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
-						return
+						break FOR_LOOP
 					}
 				}
 			}
@@ -437,6 +439,7 @@ func (p *Pinger) recvICMP(
 			recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}
 		}
 	}
+	close(recv)
 }
 
 func (p *Pinger) processPacket(recv *packet) error {
@@ -560,7 +563,6 @@ func (p *Pinger) listen(netProto string) *icmp.PacketConn {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
 		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
-		close(p.done)
 		return nil
 	}
 	return conn

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"time"
 
-	"github.com/sparrc/go-ping"
+	"github.com/chennqqi/go-ping"
 )
 
 var usage = `
@@ -58,9 +59,10 @@ func main() {
 	// listen for ctrl-C signal
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		for _ = range c {
-			pinger.Stop()
+			cancel()
 		}
 	}()
 
@@ -82,5 +84,5 @@ func main() {
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
-	pinger.Run()
+	pinger.Run(ctx)
 }
