@@ -297,6 +297,7 @@ func (p *Pinger) run(ctx context.Context) (rerr error) {
 	recv := make(chan *packet, 5)
 
 	recvCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	go p.recvICMP(conn, recv, recvCtx)
 
 	err := p.sendICMP(conn)
