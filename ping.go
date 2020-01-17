@@ -434,7 +434,12 @@ func (p *Pinger) recvICMP(
 				}
 			}
 
-			recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}
+			select {
+			case recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}:
+
+			case <-p.done:
+				return
+			}
 		}
 	}
 }
