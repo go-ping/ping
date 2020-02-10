@@ -144,6 +144,7 @@ type Pinger struct {
 
 	// stop chan bool
 	done chan bool
+	once sync.Once
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -316,7 +317,7 @@ func (p *Pinger) run() {
 			wg.Wait()
 			return
 		case <-timeout.C:
-			close(p.done)
+			p.once.Do(func() { close(p.done) })
 			wg.Wait()
 			return
 		case <-interval.C:
@@ -334,7 +335,7 @@ func (p *Pinger) run() {
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
+			p.once.Do(func() { close(p.done) })
 			wg.Wait()
 			return
 		}
@@ -342,7 +343,7 @@ func (p *Pinger) run() {
 }
 
 func (p *Pinger) Stop() {
-	close(p.done)
+	p.once.Do(func() { close(p.done) })
 }
 
 func (p *Pinger) finish() {
@@ -428,7 +429,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
+						p.once.Do(func() { close(p.done) })
 						return
 					}
 				}
@@ -560,7 +561,7 @@ func (p *Pinger) listen(netProto string) *icmp.PacketConn {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
 		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
-		close(p.done)
+		p.once.Do(func() { close(p.done) })
 		return nil
 	}
 	return conn
