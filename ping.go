@@ -98,6 +98,7 @@ func NewPinger(addr string) (*Pinger, error) {
 		Size:     timeSliceLength,
 		Tracker:  r.Int63n(math.MaxInt64),
 		done:     make(chan bool),
+		lastseq:  -1,
 	}, nil
 }
 
@@ -123,6 +124,9 @@ type Pinger struct {
 
 	// Number of packets received
 	PacketsRecv int
+
+	// Number of packets received duplicates
+	PacketsRecvDup int
 
 	// rtts is all of the Rtts
 	rtts []time.Duration
@@ -152,6 +156,7 @@ type Pinger struct {
 	size     int
 	id       int
 	sequence int
+	lastseq  int
 	network  string
 }
 
@@ -187,6 +192,9 @@ type Packet struct {
 type Statistics struct {
 	// PacketsRecv is the number of packets received.
 	PacketsRecv int
+
+	// PacketsRecvDup is the number of packets received duplicates
+	PacketsRecvDup int
 
 	// PacketsSent is the number of packets sent.
 	PacketsSent int
@@ -333,7 +341,7 @@ func (p *Pinger) run() {
 				fmt.Println("FATAL: ", err.Error())
 			}
 		}
-		if p.Count > 0 && p.PacketsRecv >= p.Count {
+		if p.Count > 0 && p.PacketsRecv >= p.Count && p.PacketsSent >= p.Count {
 			close(p.done)
 			wg.Wait()
 			return
@@ -373,14 +381,15 @@ func (p *Pinger) Statistics() *Statistics {
 		total += rtt
 	}
 	s := Statistics{
-		PacketsSent: p.PacketsSent,
-		PacketsRecv: p.PacketsRecv,
-		PacketLoss:  loss,
-		Rtts:        p.rtts,
-		Addr:        p.addr,
-		IPAddr:      p.ipaddr,
-		MaxRtt:      max,
-		MinRtt:      min,
+		PacketsSent:    p.PacketsSent,
+		PacketsRecv:    p.PacketsRecv,
+		PacketLoss:     loss,
+		Rtts:           p.rtts,
+		Addr:           p.addr,
+		IPAddr:         p.ipaddr,
+		MaxRtt:         max,
+		MinRtt:         min,
+		PacketsRecvDup: p.PacketsRecvDup,
 	}
 	if len(p.rtts) > 0 {
 		s.AvgRtt = total / time.Duration(len(p.rtts))
@@ -490,7 +499,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
-		p.PacketsRecv++
+		if p.lastseq == pkt.Seq {
+			p.PacketsRecvDup++
+		} else {
+			p.PacketsRecv++
+		}
+		p.lastseq = pkt.Seq
 	default:
 		// Very bad, not sure how this can happen
 		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
