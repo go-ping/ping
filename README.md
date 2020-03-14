@@ -5,6 +5,8 @@
 ICMP Ping library for Go, inspired by
 [go-fastping](https://github.com/tatsushid/go-fastping)
 
+        修复了死锁问题，修复了PacketLoss为负数问题，增加了PacketsRecvDup重复返回计数。在原作者没接受PR之前可临时用这个分支
+
 Here is a very simple example that sends & receives 3 packets:
 
 ```go
