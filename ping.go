@@ -7,6 +7,7 @@
 //	if err != nil {
 //		panic(err)
 //	}
+//  defer pinger.Stop()
 //
 //	pinger.Count = 3
 //	pinger.Run() // blocks until finished
@@ -19,6 +20,7 @@
 //		fmt.Printf("ERROR: %s\n", err.Error())
 //		return
 //	}
+//  defer pinger.Stop()
 //
 //	pinger.OnRecv = func(pkt *ping.Packet) {
 //		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
@@ -141,6 +143,7 @@ type Pinger struct {
 
 	// stop chan bool
 	done chan bool
+	once sync.Once
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -349,7 +352,7 @@ func (p *Pinger) Run() error {
 			wg.Wait()
 			return nil
 		case <-timeout.C:
-			close(p.done)
+			p.closeDoneChannel()
 			wg.Wait()
 			return nil
 		case <-interval.C:
@@ -369,7 +372,7 @@ func (p *Pinger) Run() error {
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
+			p.closeDoneChannel()
 			wg.Wait()
 			return nil
 		}
@@ -377,7 +380,13 @@ func (p *Pinger) Run() error {
 }
 
 func (p *Pinger) Stop() {
-	close(p.done)
+	p.closeDoneChannel()
+}
+
+func (p *Pinger) closeDoneChannel() {
+	p.once.Do(func() {
+		close(p.done)
+	})
 }
 
 func (p *Pinger) finish() {
@@ -465,7 +474,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
+						p.closeDoneChannel()
 						return err
 					}
 				}
@@ -596,7 +605,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
-		close(p.done)
+		p.closeDoneChannel()
 		return nil, err
 	}
 	return conn, nil

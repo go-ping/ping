@@ -12,6 +12,8 @@ pinger, err := ping.NewPinger("www.google.com")
 if err != nil {
         panic(err)
 }
+defer pinger.Stop()
+
 pinger.Count = 3
 pinger.Run() // blocks until finished
 stats := pinger.Statistics() // get send/receive/rtt stats
