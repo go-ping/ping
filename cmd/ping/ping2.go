@@ -13,7 +13,7 @@ func main() {
 	ipSlice = append(ipSlice, "github.com")
 	ipSlice = append(ipSlice, "121.42.9.143")
 
-	bp, err := ping.NewBatchPinger(ipSlice, 4, time.Second*1, time.Second*20)
+	bp, err := ping.NewBatchPinger(ipSlice, 10000, time.Second*1, time.Second*10000)
 
 	if err != nil {
 		fmt.Println(err)

@@ -1,25 +1,24 @@
 package ping
 
 import (
-	"net"
-	"time"
 	"fmt"
-	"sync"
-	"syscall"
-	"os"
-	"math"
-	"os/signal"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"math"
+	"net"
+	"os"
+	"os/signal"
 	"strconv"
+	"sync"
+	"syscall"
+	"time"
 )
 
 var GlobalID = 0
 
 type BatchPinger struct {
 	pingers []*Pinger2
-
 
 	// 如果收到回应包，反查pinger
 	PackPinger map[string]*Pinger2
@@ -75,13 +74,10 @@ type Pinger2 struct {
 	// ICMP sequence (2 bytes)
 	sequence int
 
-	ipv4 bool
-	size int
+	ipv4    bool
+	size    int
 	network string
-
 }
-
-
 
 func NewPinger2(ipaddr *net.IPAddr, id int, ipv4 bool) (*Pinger2) {
 	x := Pinger2{}
@@ -102,7 +98,6 @@ func NewPinger2(ipaddr *net.IPAddr, id int, ipv4 bool) (*Pinger2) {
 func NewBatchPinger(ipSlice []string, count int, interval time.Duration,
 	timeout time.Duration) (*BatchPinger, error) {
 	pingers := []*Pinger2{}
-
 
 	fmt.Printf("count ipSlice:%v\n", len(ipSlice))
 
@@ -131,14 +126,14 @@ func NewBatchPinger(ipSlice []string, count int, interval time.Duration,
 	fmt.Printf("count pingers:%v\n", len(pingers))
 
 	return &BatchPinger{
-		Interval: interval,
-		Timeout:  timeout,
-		Count:    count,
-		done:     make(chan bool),
-		network:  "ip",
-		ipv4:     ipv4,
-		size:     timeSliceLength,
-		pingers:   pingers,
+		Interval:   interval,
+		Timeout:    timeout,
+		Count:      count,
+		done:       make(chan bool),
+		network:    "ip",
+		ipv4:       ipv4,
+		size:       timeSliceLength,
+		pingers:    pingers,
 		PackPinger: make(map[string]*Pinger2),
 	}, nil
 }
@@ -222,7 +217,7 @@ func (bp *BatchPinger) Run() {
 			time.Sleep(time.Millisecond * 100)
 			allSent, allRecv := bp.GetAllPacketsRecv()
 			//fmt.Printf("Count:%v, SendCount:%v, allSent:%v, allRecv:%v\n",
-				//bp.Count, bp.SendCount, allSent, allRecv)
+			//bp.Count, bp.SendCount, allSent, allRecv)
 			if bp.Count > 0 && bp.SendCount == bp.Count && allRecv >= allSent {
 				close(bp.done)
 				wg.Wait()
@@ -232,10 +227,10 @@ func (bp *BatchPinger) Run() {
 	}
 }
 
-func (bp *BatchPinger) GetAllPacketsRecv()(int, int){
+func (bp *BatchPinger) GetAllPacketsRecv() (int, int) {
 	allRecv := 0
 	allSent := 0
-	for _, pinger := range bp.pingers{
+	for _, pinger := range bp.pingers {
 		allRecv += pinger.PacketsRecv
 		allSent += pinger.PacketsSent
 	}
@@ -282,7 +277,7 @@ func (p *BatchPinger) RecvICMP(conn *icmp.PacketConn, recv chan<- *packet, wg *s
 }
 
 func (bp *BatchPinger) BatchSendICMP(conn *icmp.PacketConn) error {
-	if bp.SendCount >= bp.Count{
+	if bp.SendCount >= bp.Count {
 		return nil
 	}
 
@@ -377,12 +372,15 @@ func (bp *BatchPinger) ProcessPacket(recv *packet) error {
 	body := m.Body.(*icmp.Echo)
 	rtt := time.Since(bytesToTime(body.Data[:timeSliceLength]))
 
-	key := strconv.Itoa(body.ID) + ":" +  strconv.Itoa(body.Seq)
-	pinger := bp.PackPinger[key]
+	key := strconv.Itoa(body.ID) + ":" + strconv.Itoa(body.Seq)
+	pinger, ok := bp.PackPinger[key]
+	if !ok {
+		fmt.Println("got other process'ping")
+		return nil
+	}
 
 	pinger.rtts = append(pinger.rtts, rtt)
 	pinger.PacketsRecv += 1
-
 
 	handler := bp.OnRecv
 	if handler != nil {
@@ -392,8 +390,6 @@ func (bp *BatchPinger) ProcessPacket(recv *packet) error {
 	return nil
 }
 
-
-
 func (bp *BatchPinger) finish() {
 	handler := bp.OnFinish
 	if handler != nil {
@@ -402,10 +398,9 @@ func (bp *BatchPinger) finish() {
 	}
 }
 
-
 func (bp *BatchPinger) Statistics() []*Statistics {
 	stSlice := [](*Statistics){}
-	for  _, pinger := range bp.pingers{
+	for _, pinger := range bp.pingers {
 		x := pinger.Statistics()
 		stSlice = append(stSlice, x)
 	}
