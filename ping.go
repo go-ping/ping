@@ -46,6 +46,7 @@ package ping
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -230,6 +231,9 @@ func (p *Pinger) IPAddr() *net.IPAddr {
 
 // Resolve does the DNS lookup for the Pinger address and sets IP protocol.
 func (p *Pinger) Resolve() error {
+	if len(p.addr) == 0 {
+		return errors.New("addr cannot be empty")
+	}
 	ipaddr, err := net.ResolveIPAddr(p.network, p.addr)
 	if err != nil {
 		return err
