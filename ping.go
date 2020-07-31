@@ -434,7 +434,10 @@ func (p *Pinger) recvICMP(
 				}
 			}
 
-			recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}
+			select {
+			case recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}:
+			case <-time.After(time.Millisecond * 10):
+			}
 		}
 	}
 }
