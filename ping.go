@@ -297,6 +297,22 @@ func (p *Pinger) run() {
 	var wg sync.WaitGroup
 	recv := make(chan *packet, 5)
 	defer close(recv)
+
+	go func() {
+		for {
+			select {
+			case r, ok := <-recv:
+				if !ok {
+					return
+				}
+				err := p.processPacket(r)
+				if err != nil {
+					fmt.Println("FATAL: ", err.Error())
+				}
+			}
+		}
+	}()
+
 	wg.Add(1)
 	go p.recvICMP(conn, recv, &wg)
 
@@ -324,11 +340,6 @@ func (p *Pinger) run() {
 				continue
 			}
 			err = p.sendICMP(conn)
-			if err != nil {
-				fmt.Println("FATAL: ", err.Error())
-			}
-		case r := <-recv:
-			err := p.processPacket(r)
 			if err != nil {
 				fmt.Println("FATAL: ", err.Error())
 			}
