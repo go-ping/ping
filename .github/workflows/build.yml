@@ -1,0 +1,54 @@
+name: Build
+
+on: [pull_request]
+
+jobs:
+  unit-tests:
+    name: vet and test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.12
+    - uses: actions/checkout@v2
+      with:
+        path: src/github.com/go-ping/ping
+    - run: |
+        export GOPATH=$GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE/src/github.com/go-ping/ping
+        go get ./...
+        go vet ./...
+        go test ./... -cover -race
+        
+  build-ping-cmd:
+    name: build ping command and run
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.12
+    - uses: actions/checkout@v2
+      with:
+        path: src/github.com/go-ping/ping
+    - run: |
+        export GOPATH=$GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE/src/github.com/go-ping/ping
+        go build -race -o ping_linux ./cmd/ping/ping.go
+        sudo ./ping_linux --privileged -c 2 www.google.com
+        sudo ./ping_linux --privileged -c 3 -i 200ms www.google.com
+        sudo ./ping_linux --privileged -c 10 -i 100ms -t 1s www.google.com
+  
+  x-platform-build:
+    name: cross platform build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-go@v2
+      with:
+        go-version: 1.12
+    - uses: actions/checkout@v2
+      with:
+        path: src/github.com/aws/amazon-ecs-agent
+    - run: |
+        export GOPATH=$GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE/src/github.com/go-ping/ping
+        GOOS=darwin go build -o ping_darwin ./cmd/ping/ping.go
