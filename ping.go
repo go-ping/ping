@@ -145,7 +145,6 @@ type Pinger struct {
 	addr   string
 
 	ipv4     bool
-	size     int
 	id       int
 	sequence int
 	// network is one of "ip", "ip4", or "ip6".
@@ -309,12 +308,16 @@ func (p *Pinger) Run() {
 		if conn = p.listen(ipv4Proto[p.protocol]); conn == nil {
 			return
 		}
-		conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true)
+		if conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true) != nil {
+			return
+		}
 	} else {
 		if conn = p.listen(ipv6Proto[p.protocol]); conn == nil {
 			return
 		}
-		conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true)
+		if conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true) != nil {
+			return
+		}
 	}
 	defer conn.Close()
 	defer p.finish()
@@ -431,7 +434,9 @@ func (p *Pinger) recvICMP(
 			return
 		default:
 			bytes := make([]byte, 512)
-			conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
+			if conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)) != nil {
+				return
+			}
 			var n, ttl int
 			var err error
 			if p.ipv4 {
