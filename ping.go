@@ -29,14 +29,14 @@
 //	}()
 //	pinger.OnRecv = func(pkt *ping.Packet) {
 //		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
-//			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
+//			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.RTT)
 //	}
 //	pinger.OnFinish = func(stats *ping.Statistics) {
 //		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
 //		fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
 //			stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss)
 //		fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
-//			stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
+//			stats.MinRTT, stats.AvgRTT, stats.MaxRTT, stats.StdDevRTT)
 //	}
 //	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 //	err = pinger.Run()
@@ -89,7 +89,7 @@ func New(addr string) *Pinger {
 	return &Pinger{
 		Count:      -1,
 		Interval:   time.Second,
-		RecordRtts: true,
+		RecordRTTs: true,
 		Size:       timeSliceLength + trackerLength,
 		Timeout:    time.Duration(math.MaxInt64),
 		Tracker:    r.Uint64(),
@@ -138,18 +138,18 @@ type Pinger struct {
 	PacketsRecvDuplicates int
 
 	// Round trip time statistics
-	minRtt    time.Duration
-	maxRtt    time.Duration
-	avgRtt    time.Duration
-	stdDevRtt time.Duration
+	minRTT    time.Duration
+	maxRTT    time.Duration
+	avgRTT    time.Duration
+	stdDevRTT time.Duration
 	stddevm2  time.Duration
 	statsMu   sync.RWMutex
 
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
-	RecordRtts bool
+	RecordRTTs bool
 
-	// rtts is all of the Rtts
+	// rtts is all of the RTTs
 	rtts []time.Duration
 
 	// OnSetup is called when Pinger has finished setting up the listening socket
@@ -202,8 +202,8 @@ type packet struct {
 
 // Packet represents a received and processed ICMP echo packet.
 type Packet struct {
-	// Rtt is the round-trip time it took to ping.
-	Rtt time.Duration
+	// RTT is the round-trip time it took to ping.
+	RTT time.Duration
 
 	// IPAddr is the address of the host being pinged.
 	IPAddr *net.IPAddr
@@ -218,7 +218,7 @@ type Packet struct {
 	Seq int
 
 	// TTL is the Time To Live on the packet.
-	Ttl int
+	TTL int
 }
 
 // Statistics represent the stats of a currently running or finished
@@ -242,21 +242,21 @@ type Statistics struct {
 	// Addr is the string address of the host being pinged.
 	Addr string
 
-	// Rtts is all of the round-trip times sent via this pinger.
-	Rtts []time.Duration
+	// RTTs is all of the round-trip times sent via this pinger.
+	RTTs []time.Duration
 
-	// MinRtt is the minimum round-trip time sent via this pinger.
-	MinRtt time.Duration
+	// MinRTT is the minimum round-trip time sent via this pinger.
+	MinRTT time.Duration
 
-	// MaxRtt is the maximum round-trip time sent via this pinger.
-	MaxRtt time.Duration
+	// MaxRTT is the maximum round-trip time sent via this pinger.
+	MaxRTT time.Duration
 
-	// AvgRtt is the average round-trip time sent via this pinger.
-	AvgRtt time.Duration
+	// AvgRTT is the average round-trip time sent via this pinger.
+	AvgRTT time.Duration
 
-	// StdDevRtt is the standard deviation of the round-trip times sent via
+	// StdDevRTT is the standard deviation of the round-trip times sent via
 	// this pinger.
-	StdDevRtt time.Duration
+	StdDevRTT time.Duration
 }
 
 func (p *Pinger) updateStatistics(pkt *Packet) {
@@ -264,27 +264,27 @@ func (p *Pinger) updateStatistics(pkt *Packet) {
 	defer p.statsMu.Unlock()
 
 	p.PacketsRecv++
-	if p.RecordRtts {
-		p.rtts = append(p.rtts, pkt.Rtt)
+	if p.RecordRTTs {
+		p.rtts = append(p.rtts, pkt.RTT)
 	}
 
-	if p.PacketsRecv == 1 || pkt.Rtt < p.minRtt {
-		p.minRtt = pkt.Rtt
+	if p.PacketsRecv == 1 || pkt.RTT < p.minRTT {
+		p.minRTT = pkt.RTT
 	}
 
-	if pkt.Rtt > p.maxRtt {
-		p.maxRtt = pkt.Rtt
+	if pkt.RTT > p.maxRTT {
+		p.maxRTT = pkt.RTT
 	}
 
 	pktCount := time.Duration(p.PacketsRecv)
 	// welford's online method for stddev
 	// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-	delta := pkt.Rtt - p.avgRtt
-	p.avgRtt += delta / pktCount
-	delta2 := pkt.Rtt - p.avgRtt
+	delta := pkt.RTT - p.avgRTT
+	p.avgRTT += delta / pktCount
+	delta2 := pkt.RTT - p.avgRTT
 	p.stddevm2 += delta * delta2
 
-	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
+	p.stdDevRTT = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
 }
 
 // SetIPAddr sets the ip address of the target host.
@@ -451,6 +451,7 @@ func (p *Pinger) Run() error {
 	}
 }
 
+// Stop shuts down the pinger.
 func (p *Pinger) Stop() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -487,13 +488,13 @@ func (p *Pinger) Statistics() *Statistics {
 		PacketsRecv:           p.PacketsRecv,
 		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
 		PacketLoss:            loss,
-		Rtts:                  p.rtts,
+		RTTs:                  p.rtts,
 		Addr:                  p.addr,
 		IPAddr:                p.ipaddr,
-		MaxRtt:                p.maxRtt,
-		MinRtt:                p.minRtt,
-		AvgRtt:                p.avgRtt,
-		StdDevRtt:             p.stdDevRtt,
+		MaxRTT:                p.maxRTT,
+		MinRTT:                p.minRTT,
+		AvgRTT:                p.avgRTT,
+		StdDevRTT:             p.stdDevRTT,
 	}
 	return &s
 }
@@ -573,7 +574,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
 		Addr:   p.addr,
-		Ttl:    recv.ttl,
+		TTL:    recv.ttl,
 	}
 
 	switch pkt := m.Body.(type) {
@@ -594,7 +595,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 
-		inPkt.Rtt = receivedAt.Sub(timestamp)
+		inPkt.RTT = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
