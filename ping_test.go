@@ -89,7 +89,7 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 
 func TestProcessPacket_IDMismatch(t *testing.T) {
 	pinger := makeTestPinger()
-	pinger.network = "ip" // ID is only checked on "ip" network
+	pinger.protocol = "icmp" // ID is only checked on "icmp" protocol
 	shouldBe0 := 0
 	// this function should not be called because the tracker is mismatched
 	pinger.OnRecv = func(pkt *Packet) {
@@ -226,7 +226,8 @@ func TestProcessPacket_PacketTooSmall(t *testing.T) {
 }
 
 func TestNewPingerValid(t *testing.T) {
-	p, err := NewPinger("www.google.com")
+	p := New("www.google.com")
+	err := p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "www.google.com", p.Addr())
 	// DNS names should resolve into IP addresses
@@ -243,9 +244,10 @@ func TestNewPingerValid(t *testing.T) {
 	// Test setting to ipv6 address
 	err = p.SetAddr("ipv6.google.com")
 	AssertNoError(t, err)
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 
-	p, err = NewPinger("localhost")
+	p = New("localhost")
+	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "localhost", p.Addr())
 	// DNS names should resolve into IP addresses
@@ -262,9 +264,10 @@ func TestNewPingerValid(t *testing.T) {
 	// Test setting to ipv6 address
 	err = p.SetAddr("ipv6.google.com")
 	AssertNoError(t, err)
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 
-	p, err = NewPinger("127.0.0.1")
+	p = New("127.0.0.1")
+	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "127.0.0.1", p.Addr())
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
@@ -279,14 +282,15 @@ func TestNewPingerValid(t *testing.T) {
 	// Test setting to ipv6 address
 	err = p.SetAddr("ipv6.google.com")
 	AssertNoError(t, err)
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 
-	p, err = NewPinger("ipv6.google.com")
+	p = New("ipv6.google.com")
+	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "ipv6.google.com", p.Addr())
 	// DNS names should resolve into IP addresses
 	AssertNotEqualStrings(t, "ipv6.google.com", p.IPAddr().String())
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 	AssertFalse(t, p.Privileged())
 	// Test that SetPrivileged works
 	p.SetPrivileged(true)
@@ -298,13 +302,14 @@ func TestNewPingerValid(t *testing.T) {
 	// Test setting to ipv6 address
 	err = p.SetAddr("ipv6.google.com")
 	AssertNoError(t, err)
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 
 	// ipv6 localhost:
-	p, err = NewPinger("::1")
+	p = New("::1")
+	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "::1", p.Addr())
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 	AssertFalse(t, p.Privileged())
 	// Test that SetPrivileged works
 	p.SetPrivileged(true)
@@ -316,7 +321,7 @@ func TestNewPingerValid(t *testing.T) {
 	// Test setting to ipv6 address
 	err = p.SetAddr("ipv6.google.com")
 	AssertNoError(t, err)
-	AssertTrue(t, isIPv6(p.IPAddr().IP))
+	AssertFalse(t, isIPv4(p.IPAddr().IP))
 }
 
 func TestNewPingerInvalid(t *testing.T) {
@@ -343,7 +348,8 @@ func TestSetIPAddr(t *testing.T) {
 	}
 
 	// Create a localhost ipv4 pinger
-	p, err := NewPinger("localhost")
+	p := New("localhost")
+	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "localhost", p.Addr())
 
@@ -354,7 +360,8 @@ func TestSetIPAddr(t *testing.T) {
 
 func TestStatisticsSunny(t *testing.T) {
 	// Create a localhost ipv4 pinger
-	p, err := NewPinger("localhost")
+	p := New("localhost")
+	err := p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "localhost", p.Addr())
 
@@ -399,7 +406,8 @@ func TestStatisticsSunny(t *testing.T) {
 
 func TestStatisticsLossy(t *testing.T) {
 	// Create a localhost ipv4 pinger
-	p, err := NewPinger("localhost")
+	p := New("localhost")
+	err := p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "localhost", p.Addr())
 
@@ -444,11 +452,11 @@ func TestStatisticsLossy(t *testing.T) {
 
 // Test helpers
 func makeTestPinger() *Pinger {
-	pinger, _ := NewPinger("127.0.0.1")
+	pinger := New("127.0.0.1")
 
 	pinger.ipv4 = true
 	pinger.addr = "127.0.0.1"
-	pinger.network = "ip"
+	pinger.protocol = "icmp"
 	pinger.id = 123
 	pinger.Tracker = 456
 	pinger.Size = 0
@@ -497,11 +505,11 @@ func AssertFalse(t *testing.T, b bool) {
 }
 
 func BenchmarkProcessPacket(b *testing.B) {
-	pinger, _ := NewPinger("127.0.0.1")
+	pinger := New("127.0.0.1")
 
 	pinger.ipv4 = true
 	pinger.addr = "127.0.0.1"
-	pinger.network = "ip4:icmp"
+	pinger.protocol = "ip4:icmp"
 	pinger.id = 123
 	pinger.Tracker = 456
 
