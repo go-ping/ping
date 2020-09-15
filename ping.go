@@ -341,11 +341,11 @@ func (p *Pinger) Run() {
 	for {
 		select {
 		case <-p.done:
-			wg.Wait()
+			safeWait(&wg, recv)
 			return
 		case <-timeout.C:
 			close(p.done)
-			wg.Wait()
+			safeWait(&wg, recv)
 			return
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
@@ -363,10 +363,17 @@ func (p *Pinger) Run() {
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
-			wg.Wait()
+			safeWait(&wg, recv)
 			return
 		}
 	}
+}
+
+func safeWait(wg *sync.WaitGroup, ch chan *packet) {
+	if len(ch) > 0 {
+		<-ch
+	}
+	wg.Wait()
 }
 
 func (p *Pinger) Stop() {
