@@ -434,7 +434,7 @@ func (p *Pinger) recvICMP(
 			return
 		default:
 			bytes := make([]byte, 512)
-			if conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)) != nil {
+			if conn.SetReadDeadline(time.Now().Add(time.Millisecond*100)) != nil {
 				return
 			}
 			var n, ttl int
