@@ -88,6 +88,7 @@ func New(addr string) *Pinger {
 		ipv4:     false,
 		network:  "ip",
 		protocol: "udp",
+		logger:   &noopLogger{},
 	}
 }
 
@@ -151,6 +152,7 @@ type Pinger struct {
 	network string
 	// protocol is "icmp" or "udp".
 	protocol string
+	logger   logger
 }
 
 type packet struct {
@@ -158,6 +160,17 @@ type packet struct {
 	nbytes int
 	ttl    int
 }
+
+type logger interface {
+	Log(v ...interface{})
+	Logf(format string, v ...interface{})
+}
+
+// noopLogger is a no-op logger, used by default
+type noopLogger struct{}
+
+func (n *noopLogger) Log(v ...interface{})                 {}
+func (n *noopLogger) Logf(format string, v ...interface{}) {}
 
 // Packet represents a received and processed ICMP echo packet.
 type Packet struct {
@@ -292,6 +305,11 @@ func (p *Pinger) Privileged() bool {
 	return p.protocol == "icmp"
 }
 
+// SetLogger sets the logger for Pinger
+func (p *Pinger) SetLogger(logger logger) {
+	p.logger = logger
+}
+
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
@@ -326,8 +344,11 @@ func (p *Pinger) Run() error {
 	recv := make(chan *packet, 5)
 	defer close(recv)
 	wg.Add(1)
-	//nolint:errcheck
-	go p.recvICMP(conn, recv, &wg)
+	go func() {
+		if err := p.recvICMP(conn, recv, &wg); err != nil {
+			p.logger.Logf("error receiving ICMP packets: %s", err)
+		}
+	}()
 
 	err = p.sendICMP(conn)
 	if err != nil {
@@ -354,14 +375,12 @@ func (p *Pinger) Run() error {
 			}
 			err = p.sendICMP(conn)
 			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
+				p.logger.Logf("error when sending ICMP packet: %s", err)
 			}
 		case r := <-recv:
 			err := p.processPacket(r)
 			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
+				p.logger.Logf("error when processing packet: %s", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {

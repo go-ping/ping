@@ -33,6 +33,15 @@ Examples:
     sudo ping --privileged www.google.com
 `
 
+type fmtLogger struct{}
+
+func (t *fmtLogger) Log(v ...interface{}) {
+	fmt.Print(v...)
+}
+func (t *fmtLogger) Logf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
+}
+
 func main() {
 	timeout := flag.Duration("t", time.Second*100000, "")
 	interval := flag.Duration("i", time.Second, "")
@@ -80,6 +89,7 @@ func main() {
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
 	pinger.SetPrivileged(*privileged)
+	pinger.SetLogger(&fmtLogger{})
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 	err = pinger.Run()
