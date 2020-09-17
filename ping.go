@@ -295,27 +295,28 @@ func (p *Pinger) Privileged() bool {
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
-func (p *Pinger) Run() (err error) {
+func (p *Pinger) Run() error {
 	var conn *icmp.PacketConn
+	var err error
 	if p.ipaddr == nil {
 		err = p.Resolve()
 	}
 	if err != nil {
-		return
+		return err
 	}
 	if p.ipv4 {
 		if conn, err = p.listen(ipv4Proto[p.protocol]); err != nil {
-			return
+			return err
 		}
 		if err = conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
-			return
+			return err
 		}
 	} else {
 		if conn, err = p.listen(ipv6Proto[p.protocol]); err != nil {
-			return
+			return err
 		}
 		if err = conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
-			return
+			return err
 		}
 	}
 	defer conn.Close()
@@ -341,11 +342,11 @@ func (p *Pinger) Run() (err error) {
 		select {
 		case <-p.done:
 			wg.Wait()
-			return
+			return nil
 		case <-timeout.C:
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				continue
@@ -365,7 +366,7 @@ func (p *Pinger) Run() (err error) {
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		}
 	}
 }
@@ -435,7 +436,7 @@ func (p *Pinger) recvICMP(
 			return nil
 		default:
 			bytes := make([]byte, 512)
-			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond*100)); err != nil {
+			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)); err != nil {
 				return err
 			}
 			var n, ttl int
