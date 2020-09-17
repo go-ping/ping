@@ -295,28 +295,28 @@ func (p *Pinger) Privileged() bool {
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
-func (p *Pinger) Run() {
+func (p *Pinger) Run() error {
 	var conn *icmp.PacketConn
 	var err error
 	if p.ipaddr == nil {
 		err = p.Resolve()
 	}
 	if err != nil {
-		return
+		return err
 	}
 	if p.ipv4 {
-		if conn = p.listen(ipv4Proto[p.protocol]); conn == nil {
-			return
+		if conn, err = p.listen(ipv4Proto[p.protocol]); err != nil {
+			return err
 		}
-		if conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true) != nil {
-			return
+		if err = conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
+			return err
 		}
 	} else {
-		if conn = p.listen(ipv6Proto[p.protocol]); conn == nil {
-			return
+		if conn, err = p.listen(ipv6Proto[p.protocol]); err != nil {
+			return err
 		}
-		if conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true) != nil {
-			return
+		if err = conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
+			return err
 		}
 	}
 	defer conn.Close()
@@ -326,11 +326,12 @@ func (p *Pinger) Run() {
 	recv := make(chan *packet, 5)
 	defer close(recv)
 	wg.Add(1)
+	//nolint:errcheck
 	go p.recvICMP(conn, recv, &wg)
 
 	err = p.sendICMP(conn)
 	if err != nil {
-		fmt.Println(err.Error())
+		return err
 	}
 
 	timeout := time.NewTicker(p.Timeout)
@@ -342,29 +343,31 @@ func (p *Pinger) Run() {
 		select {
 		case <-p.done:
 			wg.Wait()
-			return
+			return nil
 		case <-timeout.C:
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				continue
 			}
 			err = p.sendICMP(conn)
 			if err != nil {
+				// FIXME: this logs as FATAL but continues
 				fmt.Println("FATAL: ", err.Error())
 			}
 		case r := <-recv:
 			err := p.processPacket(r)
 			if err != nil {
+				// FIXME: this logs as FATAL but continues
 				fmt.Println("FATAL: ", err.Error())
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
 			wg.Wait()
-			return
+			return nil
 		}
 	}
 }
@@ -426,16 +429,16 @@ func (p *Pinger) recvICMP(
 	conn *icmp.PacketConn,
 	recv chan<- *packet,
 	wg *sync.WaitGroup,
-) {
+) error {
 	defer wg.Done()
 	for {
 		select {
 		case <-p.done:
-			return
+			return nil
 		default:
 			bytes := make([]byte, 512)
-			if conn.SetReadDeadline(time.Now().Add(time.Millisecond*100)) != nil {
-				return
+			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)); err != nil {
+				return err
 			}
 			var n, ttl int
 			var err error
@@ -459,7 +462,7 @@ func (p *Pinger) recvICMP(
 						continue
 					} else {
 						close(p.done)
-						return
+						return err
 					}
 				}
 			}
@@ -586,14 +589,13 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	return nil
 }
 
-func (p *Pinger) listen(netProto string) *icmp.PacketConn {
+func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
-		fmt.Printf("Error listening for ICMP packets: %s\n", err.Error())
 		close(p.done)
-		return nil
+		return nil, err
 	}
-	return conn
+	return conn, nil
 }
 
 func bytesToTime(b []byte) time.Time {

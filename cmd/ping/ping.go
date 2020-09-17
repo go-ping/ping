@@ -82,5 +82,8 @@ func main() {
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
-	pinger.Run()
+	err = pinger.Run()
+	if err != nil {
+		fmt.Printf("Failed to ping target host: %s", err)
+	}
 }
