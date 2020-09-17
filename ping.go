@@ -326,6 +326,7 @@ func (p *Pinger) Run() error {
 	recv := make(chan *packet, 5)
 	defer close(recv)
 	wg.Add(1)
+	//nolint:errcheck
 	go p.recvICMP(conn, recv, &wg)
 
 	err = p.sendICMP(conn)
