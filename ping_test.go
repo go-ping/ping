@@ -358,6 +358,11 @@ func TestSetIPAddr(t *testing.T) {
 	AssertEqualStrings(t, googleaddr.String(), p.Addr())
 }
 
+func TestEmptyIPAddr(t *testing.T) {
+	_, err := NewPinger("")
+	AssertError(t, err, "empty pinger did not return an error")
+}
+
 func TestStatisticsSunny(t *testing.T) {
 	// Create a localhost ipv4 pinger
 	p := New("localhost")
