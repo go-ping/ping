@@ -360,7 +360,7 @@ func TestSetIPAddr(t *testing.T) {
 
 func TestEmptyIPAddr(t *testing.T) {
 	_, err := NewPinger("")
-	AssertError(t, err, "")
+	AssertError(t, err, "empty pinger did not return an error")
 }
 
 func TestStatisticsSunny(t *testing.T) {
