@@ -76,11 +76,12 @@ var (
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Pinger{
-		Count:    -1,
-		Interval: time.Second,
-		Size:     timeSliceLength,
-		Timeout:  time.Second * 100000,
-		Tracker:  r.Int63n(math.MaxInt64),
+		Count:      -1,
+		Interval:   time.Second,
+		RecordRtts: true,
+		Size:       timeSliceLength,
+		Timeout:    time.Second * 100000,
+		Tracker:    r.Int63n(math.MaxInt64),
 
 		addr:     addr,
 		done:     make(chan bool),
@@ -121,8 +122,15 @@ type Pinger struct {
 	// Number of packets received
 	PacketsRecv int
 
+	// If true, keep a record of rtts of all received packets.
+	// Set to false to avoid memory bloat for long running pings.
+	RecordRtts bool
+
 	// rtts is all of the Rtts
 	rtts []time.Duration
+
+	// OnSend is called when Pinger sends a packet
+	OnSend func(*Packet)
 
 	// OnRecv is called when Pinger receives and processes a packet
 	OnRecv func(*Packet)
@@ -533,7 +541,9 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
 	}
 
-	p.rtts = append(p.rtts, outPkt.Rtt)
+	if p.RecordRtts {
+		p.rtts = append(p.rtts, outPkt.Rtt)
+	}
 	handler := p.OnRecv
 	if handler != nil {
 		handler(outPkt)
@@ -588,6 +598,17 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		p.PacketsSent++
 		p.sequence++
 		break
+	}
+
+	handler := p.OnSend
+	if handler != nil {
+		outPkt := &Packet{
+			Nbytes: len(msgBytes),
+			IPAddr: p.ipaddr,
+			Addr:   p.addr,
+			Seq:    p.sequence - 1,
+		}
+		handler(outPkt)
 	}
 
 	return nil
