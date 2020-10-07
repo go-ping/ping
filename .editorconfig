@@ -11,8 +11,6 @@ indent_style = space
 
 [Makefile]
 indent_style = tab
-indent_size = 4
 
 [*.go]
 indent_style = tab
-indent_size = 4
