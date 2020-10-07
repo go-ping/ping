@@ -51,8 +51,8 @@ pinger.Run()
 ```
 
 It sends ICMP Echo Request packet(s) and waits for an Echo Reply in
-response. If it receives a response, it calls the "receive" callback.
-When it's finished, it calls the "finish" callback.
+response. If it receives a response, it calls the `OnRecv` callback.
+When it's finished, it calls the `OnFinish` callback.
 
 For a full ping example, see
 [cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go)
