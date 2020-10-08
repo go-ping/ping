@@ -1,11 +1,11 @@
 # go-ping
-[![GoDoc](https://godoc.org/github.com/go-ping/ping?status.svg)](https://godoc.org/github.com/go-ping/ping)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/go-ping/ping)](https://pkg.go.dev/github.com/go-ping/ping)
 [![Circle CI](https://circleci.com/gh/go-ping/ping.svg?style=svg)](https://circleci.com/gh/go-ping/ping)
 
-ICMP Ping library for Go, inspired by
+A simple but powerful ICMP echo (ping) library for Go, inspired by
 [go-fastping](https://github.com/tatsushid/go-fastping)
 
-Here is a very simple example that sends & receives 3 packets:
+Here is a very simple example that sends and receives three packets:
 
 ```go
 pinger, err := ping.NewPinger("www.google.com")
@@ -17,7 +17,7 @@ pinger.Run() // blocks until finished
 stats := pinger.Statistics() // get send/receive/rtt stats
 ```
 
-Here is an example that emulates the unix ping command:
+Here is an example that emulates the traditional UNIX ping command:
 
 ```go
 pinger, err := ping.NewPinger("www.google.com")
@@ -50,59 +50,74 @@ fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 pinger.Run()
 ```
 
-It sends ICMP packet(s) and waits for a response. If it receives a response,
-it calls the "receive" callback. When it's finished, it calls the "finish"
-callback.
+It sends ICMP Echo Request packet(s) and waits for an Echo Reply in
+response. If it receives a response, it calls the `OnRecv` callback.
+When it's finished, it calls the `OnFinish` callback.
 
 For a full ping example, see
 [cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go)
 
-## Installation:
+## Installation
 
 ```
-go get github.com/go-ping/ping
+go get -u github.com/go-ping/ping
 ```
 
 To install the native Go ping executable:
 
 ```bash
-go get github.com/go-ping/ping/...
+go get -u github.com/go-ping/ping/...
 $GOPATH/bin/ping
 ```
 
-## Maintainers and Support:
+## Supported Operating Systems
 
-This repo was originally in the personal account of @sparrc, but is now maintained by the [go-ping organization](https://github.com/go-ping).
-
-For support and help, you usually find us in the #go-ping channel of Gophers slack. See https://invite.slack.golangbridge.org/ for an invite to the Gophers slack org.
-
-## Note on Linux Support:
-
-This library attempts to send an
-"unprivileged" ping via UDP. On linux, this must be enabled by setting
+### Linux
+This library attempts to send an "unprivileged" ping via UDP. On Linux,
+this must be enabled with the following sysctl command:
 
 ```
-sudo sysctl -w net.ipv4.ping_group_range="0   2147483647"
+sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
 ```
 
-If you do not wish to do this, you can set `pinger.SetPrivileged(true)` and
-use setcap to allow your binary using go-ping to bind to raw sockets
-(or just run as super-user):
+If you do not wish to do this, you can call `pinger.SetPrivileged(true)`
+in your code and then use setcap on your binary to allow it to bind to
+raw sockets (or just run it as root):
 
 ```
-setcap cap_net_raw=+ep /bin/go-ping
+setcap cap_net_raw=+ep /path/to/your/compiled/binary
 ```
 
 See [this blog](https://sturmflut.github.io/linux/ubuntu/2015/01/17/unprivileged-icmp-sockets-on-linux/)
-and [the Go icmp library](https://godoc.org/golang.org/x/net/icmp) for more details.
+and the Go [x/net/icmp](https://godoc.org/golang.org/x/net/icmp) package
+for more details.
 
-## Note on Windows Support:
+### Windows
 
-You must use `pinger.SetPrivileged(true)`, otherwise you will receive an error:
+You must use `pinger.SetPrivileged(true)`, otherwise you will receive
+the following error:
 
 ```
-Error listening for ICMP packets: socket: The requested protocol has not been configured into the system, or no implementation for it exists.
+socket: The requested protocol has not been configured into the system, or no implementation for it exists.
 ```
 
-This should without admin privileges. Tested on Windows 10.
+Despite the method name, this should work without the need to elevate
+privileges and has been tested on Windows 10. Please note that accessing
+packet TTL values is not supported due to limitations in the Go
+x/net/ipv4 and x/net/ipv6 packages.
 
+### Plan 9 from Bell Labs
+
+There is no support for Plan 9. This is because the entire `x/net/ipv4` 
+and `x/net/ipv6` packages are not implemented by the Go programming 
+language.
+
+## Maintainers and Getting Help:
+
+This repo was originally in the personal account of
+[sparrc](https://github.com/sparrc), but is now maintained by the
+[go-ping organization](https://github.com/go-ping).
+
+For support and help, you usually find us in the #go-ping channel of
+Gophers Slack. See https://invite.slack.golangbridge.org/ for an invite
+to the Gophers Slack org.
