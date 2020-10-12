@@ -3,7 +3,7 @@
 [![Circle CI](https://circleci.com/gh/go-ping/ping.svg?style=svg)](https://circleci.com/gh/go-ping/ping)
 
 A simple but powerful ICMP echo (ping) library for Go, inspired by
-[go-fastping](https://github.com/tatsushid/go-fastping)
+[go-fastping](https://github.com/tatsushid/go-fastping).
 
 Here is a very simple example that sends and receives three packets:
 
@@ -62,7 +62,7 @@ response. If it receives a response, it calls the `OnRecv` callback.
 When it's finished, it calls the `OnFinish` callback.
 
 For a full ping example, see
-[cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go)
+[cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go).
 
 ## Installation
 
