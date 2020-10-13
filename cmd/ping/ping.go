@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/sparrc/go-ping"
+	"github.com/go-ping/ping"
 )
 
 var usage = `
@@ -39,7 +39,7 @@ func main() {
 	count := flag.Int("c", -1, "")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
-		fmt.Printf(usage)
+		fmt.Print(usage)
 	}
 	flag.Parse()
 
@@ -59,7 +59,7 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
-		for _ = range c {
+		for range c {
 			pinger.Stop()
 		}
 	}()
@@ -82,5 +82,8 @@ func main() {
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
-	pinger.Run()
+	err = pinger.Run()
+	if err != nil {
+		fmt.Printf("Failed to ping target host: %s", err)
+	}
 }

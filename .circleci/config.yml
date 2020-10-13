@@ -1,23 +1,46 @@
-version: 2.0
+---
+executors:
+  golang:
+    docker:
+    - image: cimg/go:1.15
+
+version: 2.1
 jobs:
   build:
-    docker:
-      - image: circleci/golang:1.12
-    working_directory: /go/src/github.com/sparrc/go-ping
+    executor: golang
     steps:
       - checkout
-      - run:
-          name: Build and run some basic tests
-          command: |
-            go get ./...
-            go vet ./...
-            go test ./... -cover -race
-            go build -race -o ping_linux ./cmd/ping/ping.go
-            sudo ./ping_linux --privileged -c 2 www.google.com
-            sudo ./ping_linux --privileged -c 3 -i 200ms www.google.com
-            sudo ./ping_linux --privileged -c 10 -i 100ms -t 1s www.google.com
-            GOOS=darwin go build -o ping_darwin ./cmd/ping/ping.go
+      - run: go mod download
+      - run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
+      - run: golangci-lint run
+      - run: make
+      - run: curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | BINDIR=/home/circleci/.local/bin sh
+      - run: goreleaser release --skip-publish --snapshot
       - store_artifacts:
-          path: ./ping_linux
-      - store_artifacts:
-          path: ./ping_darwin
+          path: dist
+
+  release:
+    executor: golang
+
+    steps:
+    - checkout
+    - run: go mod download
+    - run: curl -sfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | BINDIR=/home/circleci/.local/bin sh
+    - run: goreleaser release
+
+workflows:
+  version: 2
+  stuff:
+    jobs:
+    - build:
+        filters:
+          tags:
+            only: /.*/
+    - release:
+        requires:
+        - build
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore: /.*/
