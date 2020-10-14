@@ -13,7 +13,7 @@ if err != nil {
 	panic(err)
 }
 pinger.Count = 3
-err = pinger.Run() // blocks until finished
+err = pinger.Run() // Blocks until finished.
 if err != nil {
 	panic(err)
 }
@@ -28,7 +28,7 @@ if err != nil {
 	panic(err)
 }
 
-// listen for Ctrl-C
+// Listen for Ctrl-C.
 c := make(chan os.Signal, 1)
 signal.Notify(c, os.Interrupt)
 go func() {
