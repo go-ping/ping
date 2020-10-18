@@ -124,6 +124,9 @@ type Pinger struct {
 	// rtts is all of the Rtts
 	rtts []time.Duration
 
+	// OnSend is called when Pinger sends a packet
+	OnSend func(*Packet)
+
 	// OnRecv is called when Pinger receives and processes a packet
 	OnRecv func(*Packet)
 
@@ -587,6 +590,17 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		}
 		p.PacketsSent++
 		p.sequence++
+
+		handler := p.OnSend
+		if handler != nil {
+			outPkt := &Packet{
+				Nbytes: len(msgBytes),
+				IPAddr: p.ipaddr,
+				Addr:   p.addr,
+				Seq:    p.sequence - 1,
+			}
+			handler(outPkt)
+		}
 		break
 	}
 
