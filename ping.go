@@ -69,8 +69,9 @@ const (
 )
 
 var (
-	ipv4Proto = map[string]string{"icmp": "ip4:icmp", "udp": "udp4"}
-	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
+	ipv4Proto   = map[string]string{"icmp": "ip4:icmp", "udp": "udp4"}
+	ipv6Proto   = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
+	ErrTornDown = errors.New("Stop() called more than once")
 )
 
 // New returns a new Pinger struct pointer.
@@ -84,7 +85,7 @@ func New(addr string) *Pinger {
 		Tracker:  r.Int63n(math.MaxInt64),
 
 		addr:     addr,
-		done:     make(chan bool),
+		done:     make(chan interface{}),
 		id:       r.Intn(math.MaxInt16),
 		ipaddr:   nil,
 		ipv4:     false,
@@ -140,8 +141,9 @@ type Pinger struct {
 	// Source is the source IP address
 	Source string
 
-	// stop chan bool
-	done chan bool
+	// Cleardown channel and mutex
+	done chan interface{}
+	lock sync.Mutex
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -350,7 +352,7 @@ func (p *Pinger) Run() error {
 			wg.Wait()
 			return nil
 		case <-timeout.C:
-			close(p.done)
+			_ = p.Stop()
 			wg.Wait()
 			return nil
 		case <-interval.C:
@@ -370,15 +372,29 @@ func (p *Pinger) Run() error {
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
+			_ = p.Stop()
 			wg.Wait()
 			return nil
 		}
 	}
 }
 
-func (p *Pinger) Stop() {
+func (p *Pinger) Stop() error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	ok := true
+	select {
+	case _, ok = <-p.done:
+	default:
+	}
+
+	if !ok {
+		return ErrTornDown
+	}
+
 	close(p.done)
+	return nil
 }
 
 func (p *Pinger) finish() {
@@ -466,7 +482,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
+						_ = p.Stop()
 						return err
 					}
 				}
@@ -601,7 +617,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
-		close(p.done)
+		_ = p.Stop()
 		return nil, err
 	}
 	return conn, nil

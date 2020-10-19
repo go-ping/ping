@@ -60,7 +60,9 @@ func main() {
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
-			pinger.Stop()
+			if err := pinger.Stop(); err != nil {
+				fmt.Println(err.Error())
+			}
 		}
 	}()
 

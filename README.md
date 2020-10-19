@@ -30,7 +30,10 @@ c := make(chan os.Signal, 1)
 signal.Notify(c, os.Interrupt)
 go func() {
 	for _ = range c {
-		pinger.Stop()
+		if err := pinger.Stop(); err != nil {
+			// pinger.Stop() will return an error if called more than once
+			fmt.Println(err.Error())
+		}
 	}
 }()
 
@@ -52,7 +55,10 @@ pinger.Run()
 
 It sends ICMP Echo Request packet(s) and waits for an Echo Reply in
 response. If it receives a response, it calls the `OnRecv` callback.
-When it's finished, it calls the `OnFinish` callback.
+When it's finished, it calls the `OnFinish` callback. Note that whilst
+it is safe to call `pinger.Stop()` repeatedly, it will return errors if
+called more than once. However these errors are purely informational and
+can be safely ignored.
 
 For a full ping example, see
 [cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go)
