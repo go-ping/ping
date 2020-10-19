@@ -331,8 +331,9 @@ func TestNewPingerInvalid(t *testing.T) {
 	_, err = NewPinger("127..0.0.1")
 	AssertError(t, err, "127..0.0.1")
 
-	_, err = NewPinger("wtfh")
-	AssertError(t, err, "wtfh")
+	// The .invalid tld is guaranteed not to exist by RFC2606.
+	_, err = NewPinger("wtf.invalid.")
+	AssertError(t, err, "wtf.invalid.")
 
 	_, err = NewPinger(":::1")
 	AssertError(t, err, ":::1")
