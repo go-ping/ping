@@ -76,11 +76,12 @@ var (
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Pinger{
-		Count:    -1,
-		Interval: time.Second,
-		Size:     timeSliceLength,
-		Timeout:  time.Second * 100000,
-		Tracker:  r.Int63n(math.MaxInt64),
+		Count:      -1,
+		Interval:   time.Second,
+		RecordRtts: true,
+		Size:       timeSliceLength,
+		Timeout:    time.Second * 100000,
+		Tracker:    r.Int63n(math.MaxInt64),
 
 		addr:     addr,
 		done:     make(chan bool),
