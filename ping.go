@@ -588,19 +588,19 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 				}
 			}
 		}
-		p.PacketsSent++
-		p.sequence++
-
 		handler := p.OnSend
 		if handler != nil {
 			outPkt := &Packet{
 				Nbytes: len(msgBytes),
 				IPAddr: p.ipaddr,
 				Addr:   p.addr,
-				Seq:    p.sequence - 1,
+				Seq:    p.sequence,
 			}
 			handler(outPkt)
 		}
+
+		p.PacketsSent++
+		p.sequence++
 		break
 	}
 
