@@ -518,6 +518,16 @@ func (p *Pinger) Stop() {
 	}
 }
 
+// Reset sets the RTTs and the sent and received counts
+// back to zero so that Run can be re-used on the same
+// instance.
+func (p *Pinger) Reset() {
+	p.done = make(chan bool)
+	p.rtts = make([]time.Duration, 0)
+	p.PacketsSent = 0
+	p.PacketsRecv = 0
+}
+
 func (p *Pinger) finish() {
 	handler := p.OnFinish
 	if handler != nil {
