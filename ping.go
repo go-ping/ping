@@ -347,8 +347,13 @@ func (p *Pinger) Run() error {
 		return err
 	}
 
-	timeout := time.NewTicker(p.Timeout)
-	defer timeout.Stop()
+	var timeout <-chan time.Time
+	if p.Timeout > 0 {
+		ticker := time.NewTicker(p.Timeout)
+		defer ticker.Stop()
+		timeout = ticker.C
+	}
+
 	interval := time.NewTicker(p.Interval)
 	defer interval.Stop()
 
@@ -357,7 +362,7 @@ func (p *Pinger) Run() error {
 		case <-p.done:
 			wg.Wait()
 			return nil
-		case <-timeout.C:
+		case <-timeout:
 			close(p.done)
 			wg.Wait()
 			return nil
