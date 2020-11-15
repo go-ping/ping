@@ -3,17 +3,20 @@
 [![Circle CI](https://circleci.com/gh/go-ping/ping.svg?style=svg)](https://circleci.com/gh/go-ping/ping)
 
 A simple but powerful ICMP echo (ping) library for Go, inspired by
-[go-fastping](https://github.com/tatsushid/go-fastping)
+[go-fastping](https://github.com/tatsushid/go-fastping).
 
 Here is a very simple example that sends and receives three packets:
 
 ```go
 pinger, err := ping.NewPinger("www.google.com")
 if err != nil {
-        panic(err)
+	panic(err)
 }
 pinger.Count = 3
-pinger.Run() // blocks until finished
+err = pinger.Run() // Blocks until finished.
+if err != nil {
+	panic(err)
+}
 stats := pinger.Statistics() // get send/receive/rtt stats
 ```
 
@@ -22,10 +25,10 @@ Here is an example that emulates the traditional UNIX ping command:
 ```go
 pinger, err := ping.NewPinger("www.google.com")
 if err != nil {
-        panic(err)
+	panic(err)
 }
 
-// listen for ctrl-C signal
+// Listen for Ctrl-C.
 c := make(chan os.Signal, 1)
 signal.Notify(c, os.Interrupt)
 go func() {
@@ -35,19 +38,23 @@ go func() {
 }()
 
 pinger.OnRecv = func(pkt *ping.Packet) {
-        fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
-                pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
+	fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
+		pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
 }
+
 pinger.OnFinish = func(stats *ping.Statistics) {
-        fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
-        fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
-                stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss)
-        fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
-                stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
+	fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
+	fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
+		stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss)
+	fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
+		stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
 }
 
 fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
-pinger.Run()
+err = pinger.Run()
+if err != nil {
+	panic(err)
+}
 ```
 
 It sends ICMP Echo Request packet(s) and waits for an Echo Reply in
@@ -55,7 +62,7 @@ response. If it receives a response, it calls the `OnRecv` callback.
 When it's finished, it calls the `OnFinish` callback.
 
 For a full ping example, see
-[cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go)
+[cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go).
 
 ## Installation
 
