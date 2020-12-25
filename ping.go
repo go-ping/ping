@@ -89,7 +89,7 @@ func New(addr string) *Pinger {
 		Count:      -1,
 		Interval:   time.Second,
 		RecordRtts: true,
-		Size:       timeSliceLength,
+		Size:       timeSliceLength + trackerLength,
 		Timeout:    time.Second * 100000,
 		Tracker:    r.Int63n(math.MaxInt64),
 
