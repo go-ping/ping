@@ -128,3 +128,7 @@ This repo was originally in the personal account of
 For support and help, you usually find us in the #go-ping channel of
 Gophers Slack. See https://invite.slack.golangbridge.org/ for an invite
 to the Gophers Slack org.
+
+## Contributing
+
+Refer to [CONTRIBUTING.md](https://github.com/go-ping/blob/master/CONTRIBUTING.md)
