@@ -131,4 +131,4 @@ to the Gophers Slack org.
 
 ## Contributing
 
-Refer to [CONTRIBUTING.md](https://github.com/go-ping/blob/master/CONTRIBUTING.md)
+Refer to [CONTRIBUTING.md](https://github.com/go-ping/ping/blob/master/CONTRIBUTING.md)
