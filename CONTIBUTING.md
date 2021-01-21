@@ -1,7 +1,7 @@
 # Contributing
 
-This project is already used by other projects in production environment. 
-Please be cautious when committing breaking changes. 
+This project is already used by other projects in production environment.
+Please be cautious when committing breaking changes.
 Feel free to submit PR/issue for any ideas or feedbacks.
 
 ## Pull Requests
