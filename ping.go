@@ -101,7 +101,7 @@ func New(addr string) *Pinger {
 		ipv4:              false,
 		network:           "ip",
 		protocol:          "udp",
-		receivedSequences: map[int]struct{}{},
+		awaitingSequences: map[int]struct{}{},
 	}
 }
 
@@ -165,10 +165,11 @@ type Pinger struct {
 	ipaddr *net.IPAddr
 	addr   string
 
-	ipv4              bool
-	id                int
-	sequence          int
-	receivedSequences map[int]struct{}
+	ipv4     bool
+	id       int
+	sequence int
+	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
+	awaitingSequences map[int]struct{}
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -553,10 +554,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
 		// if we've already received this sequence, ignore it.
-		if _, alreadyReceived := p.receivedSequences[pkt.Seq]; alreadyReceived {
+		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
 			return nil
 		}
-		p.receivedSequences[pkt.Seq] = struct{}{}
+		// remove it from the list of sequences we're waiting for so we don't get duplicates.
+		delete(p.awaitingSequences, pkt.Seq)
 		p.PacketsRecv++
 	default:
 		// Very bad, not sure how this can happen
@@ -627,7 +629,8 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 			}
 			handler(outPkt)
 		}
-
+		// mark this sequence as in-flight
+		p.awaitingSequences[p.sequence] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
 		break
