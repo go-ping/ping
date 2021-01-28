@@ -62,6 +62,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -84,7 +85,7 @@ var (
 
 // New returns a new Pinger struct pointer.
 func New(addr string) *Pinger {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := rand.New(rand.NewSource(getSeed()))
 	return &Pinger{
 		Count:      -1,
 		Interval:   time.Second,
@@ -93,13 +94,14 @@ func New(addr string) *Pinger {
 		Timeout:    time.Second * 100000,
 		Tracker:    r.Int63n(math.MaxInt64),
 
-		addr:     addr,
-		done:     make(chan bool),
-		id:       r.Intn(math.MaxInt16),
-		ipaddr:   nil,
-		ipv4:     false,
-		network:  "ip",
-		protocol: "udp",
+		addr:              addr,
+		done:              make(chan bool),
+		id:                r.Intn(math.MaxInt32),
+		ipaddr:            nil,
+		ipv4:              false,
+		network:           "ip",
+		protocol:          "udp",
+		receivedSequences: map[int]struct{}{},
 	}
 }
 
@@ -163,9 +165,10 @@ type Pinger struct {
 	ipaddr *net.IPAddr
 	addr   string
 
-	ipv4     bool
-	id       int
-	sequence int
+	ipv4              bool
+	id                int
+	sequence          int
+	receivedSequences map[int]struct{}
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -549,6 +552,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
+		// if we've already received this sequence, ignore it.
+		if _, alreadyReceived := p.receivedSequences[pkt.Seq]; alreadyReceived {
+			return nil
+		}
+		p.receivedSequences[pkt.Seq] = struct{}{}
 		p.PacketsRecv++
 	default:
 		// Very bad, not sure how this can happen
@@ -666,4 +674,11 @@ func intToBytes(tracker int64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(tracker))
 	return b
+}
+
+var seed int64 = time.Now().UnixNano()
+
+// getSeed returns a goroutine-safe unique seed
+func getSeed() int64 {
+	return atomic.AddInt64(&seed, 1)
 }
