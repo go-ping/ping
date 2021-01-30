@@ -553,7 +553,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
-		// if we've already received this sequence, ignore it.
+		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
 			return nil
 		}
