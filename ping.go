@@ -134,6 +134,9 @@ type Pinger struct {
 	// Number of packets received
 	PacketsRecv int
 
+	// Number of duplicate packets received
+	PacketsRecvDuplicates int
+
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
 	RecordRtts bool
@@ -149,6 +152,9 @@ type Pinger struct {
 
 	// OnFinish is called when Pinger exits
 	OnFinish func(*Statistics)
+
+	// OnDuplicateRecv is called when a packet is received that has already been received.
+	OnDuplicateRecv func(*Packet)
 
 	// Size of packet being sent
 	Size int
@@ -211,6 +217,9 @@ type Statistics struct {
 
 	// PacketsSent is the number of packets sent.
 	PacketsSent int
+
+	// PacketsRecvDuplicates is the number of duplicate responses there were to a sent packet.
+	PacketsRecvDuplicates int
 
 	// PacketLoss is the percentage of packets lost.
 	PacketLoss float64
@@ -430,14 +439,15 @@ func (p *Pinger) Statistics() *Statistics {
 		total += rtt
 	}
 	s := Statistics{
-		PacketsSent: p.PacketsSent,
-		PacketsRecv: p.PacketsRecv,
-		PacketLoss:  loss,
-		Rtts:        p.rtts,
-		Addr:        p.addr,
-		IPAddr:      p.ipaddr,
-		MaxRtt:      max,
-		MinRtt:      min,
+		PacketsSent:           p.PacketsSent,
+		PacketsRecv:           p.PacketsRecv,
+		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
+		PacketLoss:            loss,
+		Rtts:                  p.rtts,
+		Addr:                  p.addr,
+		IPAddr:                p.ipaddr,
+		MaxRtt:                max,
+		MinRtt:                min,
 	}
 	if len(p.rtts) > 0 {
 		s.AvgRtt = total / time.Duration(len(p.rtts))
@@ -555,6 +565,10 @@ func (p *Pinger) processPacket(recv *packet) error {
 		outPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
+			p.PacketsRecvDuplicates++
+			if p.OnDuplicateRecv != nil {
+				p.OnDuplicateRecv(outPkt)
+			}
 			return nil
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.

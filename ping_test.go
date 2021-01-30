@@ -554,9 +554,15 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 	pinger := makeTestPinger()
 	// pinger.protocol = "icmp" // ID is only checked on "icmp" protocol
 	shouldBe0 := 0
+	dups := 0
+
 	// this function should not be called because the tracker is mismatched
 	pinger.OnRecv = func(pkt *Packet) {
 		shouldBe0++
+	}
+
+	pinger.OnDuplicateRecv = func(pkt *Packet) {
+		dups++
 	}
 
 	data := append(timeToBytes(time.Now()), intToBytes(pinger.Tracker)...)
@@ -588,7 +594,11 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 
 	err := pinger.processPacket(&pkt)
 	AssertNoError(t, err)
+	// receive a duplicate
 	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
+
 	AssertTrue(t, shouldBe0 == 1)
+	AssertTrue(t, dups == 1)
+	AssertTrue(t, pinger.PacketsRecvDuplicates == 1)
 }
