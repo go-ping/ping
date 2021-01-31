@@ -17,7 +17,7 @@ err = pinger.Run() // Blocks until finished.
 if err != nil {
 	panic(err)
 }
-stats := pinger.Statistics() // get send/receive/rtt stats
+stats := pinger.Statistics() // get send/receive/duplicate/rtt stats
 ```
 
 Here is an example that emulates the traditional UNIX ping command:
@@ -42,6 +42,11 @@ pinger.OnRecv = func(pkt *ping.Packet) {
 		pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
 }
 
+pinger.OnDuplicateRecv = func(pkt *ping.Packet) {
+	fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v (DUP!)\n",
+		pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
+}
+
 pinger.OnFinish = func(stats *ping.Statistics) {
 	fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
 	fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
@@ -58,8 +63,10 @@ if err != nil {
 ```
 
 It sends ICMP Echo Request packet(s) and waits for an Echo Reply in
-response. If it receives a response, it calls the `OnRecv` callback.
-When it's finished, it calls the `OnFinish` callback.
+response. If it receives a response, it calls the `OnRecv` callback
+unless a packet with that sequence number has already been received,
+in which case it calls the `OnDuplicateRecv` callback. When it's
+finished, it calls the `OnFinish` callback.
 
 For a full ping example, see
 [cmd/ping/ping.go](https://github.com/go-ping/ping/blob/master/cmd/ping/ping.go).
