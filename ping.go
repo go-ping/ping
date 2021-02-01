@@ -96,7 +96,7 @@ func New(addr string) *Pinger {
 
 		addr:              addr,
 		done:              make(chan bool),
-		id:                r.Intn(math.MaxInt16),
+		id:                r.Intn(math.MaxUint16),
 		ipaddr:            nil,
 		ipv4:              false,
 		network:           "ip",
