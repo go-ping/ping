@@ -29,6 +29,7 @@ func TestProcessPacket(t *testing.T) {
 		Seq:  pinger.sequence,
 		Data: data,
 	}
+	pinger.awaitingSequences[pinger.sequence] = struct{}{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -547,4 +548,57 @@ func BenchmarkProcessPacket(b *testing.B) {
 	for k := 0; k < b.N; k++ {
 		pinger.processPacket(&pkt)
 	}
+}
+
+func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
+	pinger := makeTestPinger()
+	// pinger.protocol = "icmp" // ID is only checked on "icmp" protocol
+	shouldBe0 := 0
+	dups := 0
+
+	// this function should not be called because the tracker is mismatched
+	pinger.OnRecv = func(pkt *Packet) {
+		shouldBe0++
+	}
+
+	pinger.OnDuplicateRecv = func(pkt *Packet) {
+		dups++
+	}
+
+	data := append(timeToBytes(time.Now()), intToBytes(pinger.Tracker)...)
+	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
+		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
+	}
+
+	body := &icmp.Echo{
+		ID:   123,
+		Seq:  0,
+		Data: data,
+	}
+	// register the sequence as sent
+	pinger.awaitingSequences[0] = struct{}{}
+
+	msg := &icmp.Message{
+		Type: ipv4.ICMPTypeEchoReply,
+		Code: 0,
+		Body: body,
+	}
+
+	msgBytes, _ := msg.Marshal(nil)
+
+	pkt := packet{
+		nbytes: len(msgBytes),
+		bytes:  msgBytes,
+		ttl:    24,
+	}
+
+	err := pinger.processPacket(&pkt)
+	AssertNoError(t, err)
+	// receive a duplicate
+	err = pinger.processPacket(&pkt)
+	AssertNoError(t, err)
+
+	AssertTrue(t, shouldBe0 == 1)
+	AssertTrue(t, dups == 1)
+	AssertTrue(t, pinger.PacketsRecvDuplicates == 1)
 }

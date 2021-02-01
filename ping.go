@@ -62,6 +62,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -84,7 +85,7 @@ var (
 
 // New returns a new Pinger struct pointer.
 func New(addr string) *Pinger {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := rand.New(rand.NewSource(getSeed()))
 	return &Pinger{
 		Count:      -1,
 		Interval:   time.Second,
@@ -93,13 +94,14 @@ func New(addr string) *Pinger {
 		Timeout:    time.Second * 100000,
 		Tracker:    r.Int63n(math.MaxInt64),
 
-		addr:     addr,
-		done:     make(chan bool),
-		id:       r.Intn(math.MaxUint16),
-		ipaddr:   nil,
-		ipv4:     false,
-		network:  "ip",
-		protocol: "udp",
+		addr:              addr,
+		done:              make(chan bool),
+		id:                r.Intn(math.MaxUint16),
+		ipaddr:            nil,
+		ipv4:              false,
+		network:           "ip",
+		protocol:          "udp",
+		awaitingSequences: map[int]struct{}{},
 	}
 }
 
@@ -132,6 +134,9 @@ type Pinger struct {
 	// Number of packets received
 	PacketsRecv int
 
+	// Number of duplicate packets received
+	PacketsRecvDuplicates int
+
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
 	RecordRtts bool
@@ -147,6 +152,9 @@ type Pinger struct {
 
 	// OnFinish is called when Pinger exits
 	OnFinish func(*Statistics)
+
+	// OnDuplicateRecv is called when a packet is received that has already been received.
+	OnDuplicateRecv func(*Packet)
 
 	// Size of packet being sent
 	Size int
@@ -166,6 +174,8 @@ type Pinger struct {
 	ipv4     bool
 	id       int
 	sequence int
+	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
+	awaitingSequences map[int]struct{}
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -207,6 +217,9 @@ type Statistics struct {
 
 	// PacketsSent is the number of packets sent.
 	PacketsSent int
+
+	// PacketsRecvDuplicates is the number of duplicate responses there were to a sent packet.
+	PacketsRecvDuplicates int
 
 	// PacketLoss is the percentage of packets lost.
 	PacketLoss float64
@@ -426,14 +439,15 @@ func (p *Pinger) Statistics() *Statistics {
 		total += rtt
 	}
 	s := Statistics{
-		PacketsSent: p.PacketsSent,
-		PacketsRecv: p.PacketsRecv,
-		PacketLoss:  loss,
-		Rtts:        p.rtts,
-		Addr:        p.addr,
-		IPAddr:      p.ipaddr,
-		MaxRtt:      max,
-		MinRtt:      min,
+		PacketsSent:           p.PacketsSent,
+		PacketsRecv:           p.PacketsRecv,
+		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
+		PacketLoss:            loss,
+		Rtts:                  p.rtts,
+		Addr:                  p.addr,
+		IPAddr:                p.ipaddr,
+		MaxRtt:                max,
+		MinRtt:                min,
 	}
 	if len(p.rtts) > 0 {
 		s.AvgRtt = total / time.Duration(len(p.rtts))
@@ -549,6 +563,16 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 		outPkt.Rtt = receivedAt.Sub(timestamp)
 		outPkt.Seq = pkt.Seq
+		// If we've already received this sequence, ignore it.
+		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
+			p.PacketsRecvDuplicates++
+			if p.OnDuplicateRecv != nil {
+				p.OnDuplicateRecv(outPkt)
+			}
+			return nil
+		}
+		// remove it from the list of sequences we're waiting for so we don't get duplicates.
+		delete(p.awaitingSequences, pkt.Seq)
 		p.PacketsRecv++
 	default:
 		// Very bad, not sure how this can happen
@@ -619,7 +643,8 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 			}
 			handler(outPkt)
 		}
-
+		// mark this sequence as in-flight
+		p.awaitingSequences[p.sequence] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
 		break
@@ -666,4 +691,11 @@ func intToBytes(tracker int64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(tracker))
 	return b
+}
+
+var seed int64 = time.Now().UnixNano()
+
+// getSeed returns a goroutine-safe unique seed
+func getSeed() int64 {
+	return atomic.AddInt64(&seed, 1)
 }
