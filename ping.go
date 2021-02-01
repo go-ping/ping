@@ -92,7 +92,7 @@ func New(addr string) *Pinger {
 		RecordRtts: true,
 		Size:       timeSliceLength,
 		Timeout:    time.Second * 100000,
-		Tracker:    r.Int63n(math.MaxInt64),
+		Tracker:    r.Uint64(),
 
 		addr:              addr,
 		done:              make(chan bool),
@@ -159,8 +159,8 @@ type Pinger struct {
 	// Size of packet being sent
 	Size int
 
-	// Tracker: Used to uniquely identify packet when non-priviledged
-	Tracker int64
+	// Tracker: Used to uniquely identify packets
+	Tracker uint64
 
 	// Source is the source IP address
 	Source string
@@ -541,12 +541,9 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		// If we are priviledged, we can match icmp.ID
-		if p.protocol == "icmp" {
-			// Check if reply from same ID
-			if pkt.ID != p.id {
-				return nil
-			}
+		// Check if the reply has the ID we expect.
+		if pkt.ID != p.id {
+			return nil
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
@@ -554,7 +551,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 				len(pkt.Data), pkt.Data)
 		}
 
-		tracker := bytesToInt(pkt.Data[timeSliceLength:])
+		tracker := bytesToUint(pkt.Data[timeSliceLength:])
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 
 		if tracker != p.Tracker {
@@ -603,7 +600,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	t := append(timeToBytes(time.Now()), intToBytes(p.Tracker)...)
+	t := append(timeToBytes(time.Now()), uintToBytes(p.Tracker)...)
 	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -683,13 +680,13 @@ func timeToBytes(t time.Time) []byte {
 	return b
 }
 
-func bytesToInt(b []byte) int64 {
-	return int64(binary.BigEndian.Uint64(b))
+func bytesToUint(b []byte) uint64 {
+	return uint64(binary.BigEndian.Uint64(b))
 }
 
-func intToBytes(tracker int64) []byte {
+func uintToBytes(tracker uint64) []byte {
 	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(tracker))
+	binary.BigEndian.PutUint64(b, tracker)
 	return b
 }
 
