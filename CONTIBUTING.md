@@ -1,7 +1,11 @@
 # Contributing
 
-This project is already used by other projects in production environment.
-Please be cautious when committing breaking changes.
+First off, thanks for taking the time to contribute!
+
+Remember that this is open source software so please consider the other people who will read your code.
+Make it look nice for them, document your logic in comments and add or update the unit test cases.
+
+This library is used by various other projects, companies and individuals in live production environments so please discuss any breaking changes with us before making them.
 Feel free to join us in the #go-ping channel of the [Gophers Slack](https://invite.slack.golangbridge.org/).
 
 ## Pull Requests
@@ -25,12 +29,16 @@ $ git commit -s
 $ git push <FORK> <BRANCH_NAME>
 ```
 
-Open a pull request in the main `go-ping/ping` repository. Also, please remember to describe the purpose of this PR and attach related issues.
+Open a [new pull request](https://github.com/go-ping/ping/compare) in the main `go-ping/ping` repository.
+Please describe the purpose of your PR and remember link it to any related issues.
 
-*Rebase your feature branch if necessary. Maintainers might ask you to squash the commits.*
+*We may ask you to rebase your feature branch or squash the commits in order to keep the history clean.*
 
 ## Development Guides
 
 - Run `make style vet test` before committing your changes.
+- Document your logic in code comments.
 - Add tests for bug fixes and new features.
-
+- Use UNIX-style (LF) line endings.
+- End every file with a single blank line.
+- Use the UTF-8 character set.
