@@ -472,7 +472,8 @@ func (p *Pinger) recvICMP(
 		case <-p.done:
 			return nil
 		default:
-			bytes := make([]byte, 512)
+			// ICMP messages have an 8-byte header.
+			bytes := make([]byte, p.Size+8)
 			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)); err != nil {
 				return err
 			}
