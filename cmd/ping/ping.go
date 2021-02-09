@@ -31,12 +31,16 @@ Examples:
 
     # Send a privileged raw ICMP ping
     sudo ping --privileged www.google.com
+
+    # Send ICMP messages with a 100-byte payload
+    ping -s 100 1.1.1.1
 `
 
 func main() {
 	timeout := flag.Duration("t", time.Second*100000, "")
 	interval := flag.Duration("i", time.Second, "")
 	count := flag.Int("c", -1, "")
+	size := flag.Int("s", 16, "")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -81,6 +85,7 @@ func main() {
 	}
 
 	pinger.Count = *count
+	pinger.Size = *size
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
 	pinger.SetPrivileged(*privileged)
