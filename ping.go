@@ -472,18 +472,7 @@ func (p *Pinger) recvICMP(
 		case <-p.done:
 			return nil
 		default:
-			// ICMP messages have an 8-byte header.
-			length := p.Size + 8
-			// But on Windows we have to deserialise the whole
-			// IP packet, not just the message in its payload.
-			if runtime.GOOS == "windows" {
-				if p.ipv4 {
-					length += ipv4.HeaderLen
-				} else {
-					length += ipv6.HeaderLen
-				}
-			}
-			bytes := make([]byte, length)
+			bytes := make([]byte, p.getMessageLength())
 			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)); err != nil {
 				return err
 			}
