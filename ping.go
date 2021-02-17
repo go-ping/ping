@@ -541,8 +541,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		// Check if the reply has the ID we expect.
-		if pkt.ID != p.id {
+		if !p.matchID(pkt.ID) {
 			return nil
 		}
 
