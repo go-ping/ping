@@ -532,7 +532,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		return nil
 	}
 
-	outPkt := &Packet{
+	inPkt := &Packet{
 		Nbytes: recv.nbytes,
 		IPAddr: p.ipaddr,
 		Addr:   p.addr,
@@ -557,13 +557,13 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 
-		outPkt.Rtt = receivedAt.Sub(timestamp)
-		outPkt.Seq = pkt.Seq
+		inPkt.Rtt = receivedAt.Sub(timestamp)
+		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
-				p.OnDuplicateRecv(outPkt)
+				p.OnDuplicateRecv(inPkt)
 			}
 			return nil
 		}
@@ -576,11 +576,11 @@ func (p *Pinger) processPacket(recv *packet) error {
 	}
 
 	if p.RecordRtts {
-		p.rtts = append(p.rtts, outPkt.Rtt)
+		p.rtts = append(p.rtts, inPkt.Rtt)
 	}
 	handler := p.OnRecv
 	if handler != nil {
-		handler(outPkt)
+		handler(inPkt)
 	}
 
 	return nil
