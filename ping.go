@@ -137,6 +137,13 @@ type Pinger struct {
 	// Number of duplicate packets received
 	PacketsRecvDuplicates int
 
+	// Round trip time statistics
+	minRtt    time.Duration
+	maxRtt    time.Duration
+	avgRtt    time.Duration
+	stdDevRtt time.Duration
+	stddevm2  time.Duration
+
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
 	RecordRtts bool
@@ -245,6 +252,27 @@ type Statistics struct {
 	// StdDevRtt is the standard deviation of the round-trip times sent via
 	// this pinger.
 	StdDevRtt time.Duration
+}
+
+func (p *Pinger) updateStatistics(pkt *Packet) {
+	p.PacketsRecv++
+	if p.PacketsRecv == 1 || pkt.Rtt < p.minRtt {
+		p.minRtt = pkt.Rtt
+	}
+
+	if pkt.Rtt > p.maxRtt {
+		p.maxRtt = pkt.Rtt
+	}
+
+	pktCount := time.Duration(p.PacketsRecv)
+	// welford's online method for stddev
+	// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+	delta := pkt.Rtt - p.avgRtt
+	p.avgRtt += delta / pktCount
+	delta2 := pkt.Rtt - p.avgRtt
+	p.stddevm2 += delta * delta2
+
+	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
 }
 
 // SetIPAddr sets the ip address of the target host.
@@ -424,20 +452,6 @@ func (p *Pinger) finish() {
 // get it's finished statistics.
 func (p *Pinger) Statistics() *Statistics {
 	loss := float64(p.PacketsSent-p.PacketsRecv) / float64(p.PacketsSent) * 100
-	var min, max, total time.Duration
-	if len(p.rtts) > 0 {
-		min = p.rtts[0]
-		max = p.rtts[0]
-	}
-	for _, rtt := range p.rtts {
-		if rtt < min {
-			min = rtt
-		}
-		if rtt > max {
-			max = rtt
-		}
-		total += rtt
-	}
 	s := Statistics{
 		PacketsSent:           p.PacketsSent,
 		PacketsRecv:           p.PacketsRecv,
@@ -446,17 +460,10 @@ func (p *Pinger) Statistics() *Statistics {
 		Rtts:                  p.rtts,
 		Addr:                  p.addr,
 		IPAddr:                p.ipaddr,
-		MaxRtt:                max,
-		MinRtt:                min,
-	}
-	if len(p.rtts) > 0 {
-		s.AvgRtt = total / time.Duration(len(p.rtts))
-		var sumsquares time.Duration
-		for _, rtt := range p.rtts {
-			sumsquares += (rtt - s.AvgRtt) * (rtt - s.AvgRtt)
-		}
-		s.StdDevRtt = time.Duration(math.Sqrt(
-			float64(sumsquares / time.Duration(len(p.rtts)))))
+		MaxRtt:                p.maxRtt,
+		MinRtt:                p.minRtt,
+		AvgRtt:                p.avgRtt,
+		StdDevRtt:             p.stdDevRtt,
 	}
 	return &s
 }
@@ -569,7 +576,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
 		delete(p.awaitingSequences, pkt.Seq)
-		p.PacketsRecv++
+		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
 		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
