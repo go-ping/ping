@@ -373,19 +373,16 @@ func TestStatisticsSunny(t *testing.T) {
 	AssertEqualStrings(t, "localhost", p.Addr())
 
 	p.PacketsSent = 10
-	p.PacketsRecv = 10
-	p.rtts = []time.Duration{
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(1000),
-	}
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
 
 	stats := p.Statistics()
 	if stats.PacketsRecv != 10 {
@@ -419,19 +416,16 @@ func TestStatisticsLossy(t *testing.T) {
 	AssertEqualStrings(t, "localhost", p.Addr())
 
 	p.PacketsSent = 20
-	p.PacketsRecv = 10
-	p.rtts = []time.Duration{
-		time.Duration(10),
-		time.Duration(1000),
-		time.Duration(1000),
-		time.Duration(10000),
-		time.Duration(1000),
-		time.Duration(800),
-		time.Duration(1000),
-		time.Duration(40),
-		time.Duration(100000),
-		time.Duration(1000),
-	}
+	p.updateStatistics(&Packet{Rtt: time.Duration(10)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(10000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(800)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(40)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(100000)})
+	p.updateStatistics(&Packet{Rtt: time.Duration(1000)})
 
 	stats := p.Statistics()
 	if stats.PacketsRecv != 10 {

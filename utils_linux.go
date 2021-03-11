@@ -1,4 +1,4 @@
-// +build !linux,!windows
+// +build linux
 
 package ping
 
@@ -9,8 +9,11 @@ func (p *Pinger) getMessageLength() int {
 
 // Attempts to match the ID of an ICMP packet.
 func (p *Pinger) matchID(ID int) bool {
-	if ID != p.id {
-		return false
+	// On Linux we can only match ID if we are privileged.
+	if p.protocol == "icmp" {
+		if ID != p.id {
+			return false
+		}
 	}
 	return true
 }
