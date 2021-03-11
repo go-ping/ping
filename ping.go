@@ -143,7 +143,7 @@ type Pinger struct {
 	avgRtt    time.Duration
 	stdDevRtt time.Duration
 	stddevm2  time.Duration
-	statsmu   sync.RWMutex
+	statsMu   sync.RWMutex
 
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
@@ -256,8 +256,8 @@ type Statistics struct {
 }
 
 func (p *Pinger) updateStatistics(pkt *Packet) {
-	p.statsmu.Lock()
-	defer p.statsmu.Unlock()
+	p.statsMu.Lock()
+	defer p.statsMu.Unlock()
 
 	p.PacketsRecv++
 	if p.RecordRtts {
@@ -459,8 +459,8 @@ func (p *Pinger) finish() {
 // pinger is running or after it is finished. OnFinish calls this function to
 // get it's finished statistics.
 func (p *Pinger) Statistics() *Statistics {
-	p.statsmu.RLock()
-	defer p.statsmu.RUnlock()
+	p.statsMu.RLock()
+	defer p.statsMu.RUnlock()
 	sent := p.PacketsSent
 	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
 	s := Statistics{
