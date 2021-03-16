@@ -54,7 +54,6 @@ package ping
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -66,6 +65,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -74,7 +74,7 @@ import (
 
 const (
 	timeSliceLength  = 8
-	trackerLength    = 8
+	trackerLength    = len(uuid.UUID{})
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
 )
@@ -87,17 +87,18 @@ var (
 // New returns a new Pinger struct pointer.
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(getSeed()))
+	firstUUID := uuid.New()
 	return &Pinger{
 		Count:      -1,
 		Interval:   time.Second,
 		RecordRtts: true,
 		Size:       timeSliceLength + trackerLength,
 		Timeout:    time.Duration(math.MaxInt64),
-		Tracker:    r.Uint64(),
 
 		addr:              addr,
 		done:              make(chan interface{}),
 		id:                r.Intn(math.MaxUint16),
+		trackerUUIDs:      []uuid.UUID{firstUUID},
 		ipaddr:            nil,
 		ipv4:              false,
 		network:           "ip",
@@ -172,7 +173,7 @@ type Pinger struct {
 	// Size of packet being sent
 	Size int
 
-	// Tracker: Used to uniquely identify packets
+	// Tracker: Used to uniquely identify packets - Deprecated
 	Tracker uint64
 
 	// Source is the source IP address
@@ -184,6 +185,9 @@ type Pinger struct {
 
 	ipaddr *net.IPAddr
 	addr   string
+
+	// trackerUUIDs is the list of UUIDs being used for sending packets.
+	trackerUUIDs []uuid.UUID
 
 	ipv4     bool
 	id       int
@@ -382,6 +386,9 @@ func (p *Pinger) SetLogger(logger Logger) {
 func (p *Pinger) Run() error {
 	var conn packetConn
 	var err error
+	if p.Size < timeSliceLength+trackerLength {
+		return fmt.Errorf("Size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
+	}
 	if p.ipaddr == nil {
 		err = p.Resolve()
 	}
@@ -620,10 +627,14 @@ func (p *Pinger) processPacket(recv *packet) error {
 				len(pkt.Data), pkt.Data)
 		}
 
-		tracker := bytesToUint(pkt.Data[timeSliceLength:])
+		var packetUUID uuid.UUID
+		err = packetUUID.UnmarshalBinary(pkt.Data[timeSliceLength : timeSliceLength+trackerLength])
+		if err != nil {
+			return fmt.Errorf("error decoding tracking UUID: %w", err)
+		}
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 
-		if tracker != p.Tracker {
+		if packetUUID.String() != p.trackerUUIDs[len(p.trackerUUIDs)-1].String() {
 			return nil
 		}
 
@@ -659,7 +670,11 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	t := append(timeToBytes(time.Now()), uintToBytes(p.Tracker)...)
+	currentUUID, err := p.trackerUUIDs[len(p.trackerUUIDs)-1].MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("unable to marshal UUID binary: %w", err)
+	}
+	t := append(timeToBytes(time.Now()), currentUUID...)
 	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -751,16 +766,6 @@ func timeToBytes(t time.Time) []byte {
 	for i := uint8(0); i < 8; i++ {
 		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff)
 	}
-	return b
-}
-
-func bytesToUint(b []byte) uint64 {
-	return uint64(binary.BigEndian.Uint64(b))
-}
-
-func uintToBytes(tracker uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, tracker)
 	return b
 }
 
