@@ -524,7 +524,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var m *icmp.Message
 	var err error
 	if m, err = icmp.ParseMessage(proto, recv.bytes); err != nil {
-		return fmt.Errorf("error parsing icmp message: %s", err.Error())
+		return fmt.Errorf("error parsing icmp message: %w", err)
 	}
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
