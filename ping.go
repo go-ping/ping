@@ -407,8 +407,18 @@ func (p *Pinger) Run() error {
 
 	timeout := time.NewTicker(p.Timeout)
 	defer timeout.Stop()
-	interval := time.NewTicker(p.Interval)
-	defer interval.Stop()
+
+	var intervalCh <-chan time.Time
+
+	if p.Interval > 0 {
+		interval := time.NewTicker(p.Interval)
+		defer interval.Stop()
+		intervalCh = interval.C
+	} else {
+		ch := make(chan time.Time)
+		close(ch)
+		intervalCh = ch
+	}
 
 	for {
 		select {
@@ -419,8 +429,11 @@ func (p *Pinger) Run() error {
 			close(p.done)
 			wg.Wait()
 			return nil
-		case <-interval.C:
+		case <-intervalCh:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
+				// make sure we don't receive anything
+				// else from this channel
+				intervalCh = nil
 				continue
 			}
 			err = p.sendICMP(conn)
