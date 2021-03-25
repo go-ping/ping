@@ -61,7 +61,6 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -385,7 +384,7 @@ func (p *Pinger) Run() error {
 		logger = NoopLogger{}
 	}
 
-	var conn *icmp.PacketConn
+	var conn packetConn
 	var err error
 	if p.ipaddr == nil {
 		err = p.Resolve()
@@ -393,20 +392,11 @@ func (p *Pinger) Run() error {
 	if err != nil {
 		return err
 	}
-	if p.ipv4 {
-		if conn, err = p.listen(ipv4Proto[p.protocol]); err != nil {
-			return err
-		}
-		if err = conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); runtime.GOOS != "windows" && err != nil {
-			return err
-		}
-	} else {
-		if conn, err = p.listen(ipv6Proto[p.protocol]); err != nil {
-			return err
-		}
-		if err = conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); runtime.GOOS != "windows" && err != nil {
-			return err
-		}
+	if conn, err = p.listen(); err != nil {
+		return err
+	}
+	if err = conn.SetFlagTTL(); err != nil {
+		return err
 	}
 	defer conn.Close()
 	defer p.finish()
@@ -531,7 +521,7 @@ func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
 }
 
 func (p *Pinger) recvICMP(
-	conn *icmp.PacketConn,
+	conn packetConn,
 	recv chan<- *packet,
 	wg *sync.WaitGroup,
 ) error {
@@ -552,19 +542,7 @@ func (p *Pinger) recvICMP(
 			}
 			var n, ttl int
 			var err error
-			if p.ipv4 {
-				var cm *ipv4.ControlMessage
-				n, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
-				if cm != nil {
-					ttl = cm.TTL
-				}
-			} else {
-				var cm *ipv6.ControlMessage
-				n, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
-				if cm != nil {
-					ttl = cm.HopLimit
-				}
-			}
+			n, ttl, _, err = conn.ReadFrom(bytes)
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
@@ -658,14 +636,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	return nil
 }
 
-func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
-	var typ icmp.Type
-	if p.ipv4 {
-		typ = ipv4.ICMPTypeEcho
-	} else {
-		typ = ipv6.ICMPTypeEchoRequest
-	}
-
+func (p *Pinger) sendICMP(conn packetConn) error {
 	var dst net.Addr = p.ipaddr
 	if p.protocol == "udp" {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
@@ -683,7 +654,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	}
 
 	msg := &icmp.Message{
-		Type: typ,
+		Type: conn.ICMPRequestType(),
 		Code: 0,
 		Body: body,
 	}
@@ -721,8 +692,22 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 	return nil
 }
 
-func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
-	conn, err := icmp.ListenPacket(netProto, p.Source)
+func (p *Pinger) listen() (packetConn, error) {
+	var (
+		conn packetConn
+		err  error
+	)
+
+	if p.ipv4 {
+		var c icmpv4Conn
+		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
+		conn = &c
+	} else {
+		var c icmpV6Conn
+		c.c, err = icmp.ListenPacket(ipv6Proto[p.protocol], p.Source)
+		conn = &c
+	}
+
 	if err != nil {
 		p.Stop()
 		return nil, err
