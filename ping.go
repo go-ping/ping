@@ -185,9 +185,10 @@ type Pinger struct {
 	ipaddr *net.IPAddr
 	addr   string
 
-	ipv4     bool
-	id       int
-	sequence int
+	ipv4         bool
+	dontFragment bool
+	id           int
+	sequence     int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
 	awaitingSequences map[int]struct{}
 	// network is one of "ip", "ip4", or "ip6".
@@ -363,6 +364,13 @@ func (p *Pinger) SetPrivileged(privileged bool) {
 		p.protocol = "icmp"
 	} else {
 		p.protocol = "udp"
+	}
+}
+
+func (p *Pinger) SetDontFragment(dontFragment bool) {
+	if dontFragment {
+		p.dontFragment = true
+		p.SetPrivileged(true)
 	}
 }
 
@@ -683,9 +691,13 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 
 	for {
 		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
-			if neterr, ok := err.(*net.OpError); ok {
-				if neterr.Err == syscall.ENOBUFS {
+			var syserr syscall.Errno
+			if errors.As(err, &syserr) {
+				switch syserr {
+				case syscall.ENOBUFS:
 					continue
+				case syscall.EMSGSIZE:
+					return err
 				}
 			}
 			return err
@@ -717,9 +729,13 @@ func (p *Pinger) listen() (packetConn, error) {
 	)
 
 	if p.ipv4 {
-		var c icmpv4Conn
-		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
-		conn = &c
+		if p.dontFragment {
+			conn, err = newIcmpV4RawConn(p.Source)
+		} else {
+			var c icmpv4Conn
+			c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
+			conn = &c
+		}
 	} else {
 		var c icmpV6Conn
 		c.c, err = icmp.ListenPacket(ipv6Proto[p.protocol], p.Source)

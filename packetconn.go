@@ -84,3 +84,80 @@ func (c *icmpV6Conn) ReadFrom(b []byte) (int, int, net.Addr, error) {
 func (c icmpV6Conn) ICMPRequestType() icmp.Type {
 	return ipv6.ICMPTypeEchoRequest
 }
+
+type icmpV4RawConn struct {
+	netConn net.PacketConn
+	c       *ipv4.RawConn
+	src     net.IP
+}
+
+func newIcmpV4RawConn(src string) (*icmpV4RawConn, error) {
+	netConn, err := net.ListenPacket("ip4:icmp", src)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := ipv4.NewRawConn(netConn)
+	if err != nil {
+		_ = netConn.Close()
+		return nil, err
+	}
+
+	return &icmpV4RawConn{netConn: netConn, c: c, src: net.ParseIP(src)}, nil
+}
+
+func (c *icmpV4RawConn) Close() error {
+	err := c.c.Close()
+	err2 := c.netConn.Close()
+	if err != nil {
+		return err
+	}
+	return err2
+}
+
+func (c *icmpV4RawConn) SetFlagTTL() error {
+	err := c.c.SetControlMessage(ipv4.FlagTTL, true)
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return err
+}
+
+func (c *icmpV4RawConn) ReadFrom(b []byte) (int, int, net.Addr, error) {
+	h, p, cm, err := c.c.ReadFrom(b)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+
+	copy(b, p)
+
+	ttl := 0
+	if cm != nil {
+		ttl = cm.TTL
+	}
+
+	return len(p), ttl, &net.IPAddr{IP: h.Src}, nil
+}
+
+func (c icmpV4RawConn) ICMPRequestType() icmp.Type {
+	return ipv4.ICMPTypeEcho
+}
+
+func (c *icmpV4RawConn) SetReadDeadline(t time.Time) error {
+	return c.c.SetReadDeadline(t)
+}
+
+func (c *icmpV4RawConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+	header := ipv4.Header{
+		Version:  ipv4.Version,
+		Len:      ipv4.HeaderLen,
+		Protocol: ipv4.ICMPTypeEcho.Protocol(),
+		TotalLen: ipv4.HeaderLen + len(b),
+		TTL:      64,
+		Dst:      net.ParseIP(dst.String()),
+		Src:      c.src,
+		Flags:    ipv4.DontFragment,
+	}
+
+	return len(b), c.c.WriteTo(&header, b, nil)
+}
