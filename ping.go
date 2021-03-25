@@ -407,43 +407,43 @@ func (p *Pinger) Run() error {
 		handler()
 	}
 
-	err = p.sendICMP(conn)
-	if err != nil {
-		return err
-	}
-
 	timeout := time.NewTicker(p.Timeout)
-	defer timeout.Stop()
 	interval := time.NewTicker(p.Interval)
-	defer interval.Stop()
 
 	for {
 		select {
 		case <-p.done:
+			interval.Stop()
+			timeout.Stop()
 			wg.Wait()
 			return nil
 		case <-timeout.C:
 			close(p.done)
+			interval.Stop()
+			timeout.Stop()
 			wg.Wait()
 			return nil
+		case r := <-recv:
+			err := p.processPacket(r)
+			if err != nil {
+				// FIXME: this logs as FATAL but continues
+				fmt.Println("FATAL:", err)
+			}
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
+				interval.Stop()
 				continue
 			}
 			err = p.sendICMP(conn)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
-			}
-		case r := <-recv:
-			err := p.processPacket(r)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
+				fmt.Println("FATAL:", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
+			interval.Stop()
+			timeout.Stop()
 			wg.Wait()
 			return nil
 		}
