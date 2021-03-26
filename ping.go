@@ -417,6 +417,11 @@ func (p *Pinger) Run() error {
 		wg.Wait()
 	}()
 
+	err = p.sendICMP(conn)
+	if err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-p.done:
