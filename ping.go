@@ -95,7 +95,7 @@ func New(addr string) *Pinger {
 		Tracker:    r.Uint64(),
 
 		addr:              addr,
-		done:              make(chan bool),
+		done:              make(chan interface{}),
 		id:                r.Intn(math.MaxUint16),
 		ipaddr:            nil,
 		ipv4:              false,
@@ -176,8 +176,9 @@ type Pinger struct {
 	// Source is the source IP address
 	Source string
 
-	// stop chan bool
-	done chan bool
+	// Channel and mutex used to communicate when the Pinger should stop between goroutines.
+	done chan interface{}
+	lock sync.Mutex
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -410,6 +411,7 @@ func (p *Pinger) Run() error {
 	timeout := time.NewTicker(p.Timeout)
 	interval := time.NewTicker(p.Interval)
 	defer func() {
+		p.Stop()
 		interval.Stop()
 		timeout.Stop()
 		wg.Wait()
@@ -420,7 +422,6 @@ func (p *Pinger) Run() error {
 		case <-p.done:
 			return nil
 		case <-timeout.C:
-			close(p.done)
 			return nil
 		case r := <-recv:
 			err := p.processPacket(r)
@@ -440,14 +441,24 @@ func (p *Pinger) Run() error {
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
 			return nil
 		}
 	}
 }
 
 func (p *Pinger) Stop() {
-	close(p.done)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	open := true
+	select {
+	case _, ok = <-p.done:
+	default:
+	}
+
+	if open {
+		close(p.done)
+	}
 }
 
 func (p *Pinger) finish() {
@@ -518,7 +529,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
+						p.Stop()
 						return err
 					}
 				}
@@ -670,7 +681,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
-		close(p.done)
+		p.Stop()
 		return nil, err
 	}
 	return conn, nil
