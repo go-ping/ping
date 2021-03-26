@@ -452,7 +452,7 @@ func (p *Pinger) Stop() {
 
 	open := true
 	select {
-	case _, ok = <-p.done:
+	case _, open = <-p.done:
 	default:
 	}
 
