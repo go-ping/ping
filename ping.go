@@ -409,19 +409,18 @@ func (p *Pinger) Run() error {
 
 	timeout := time.NewTicker(p.Timeout)
 	interval := time.NewTicker(p.Interval)
+	defer func() {
+		interval.Stop()
+		timeout.Stop()
+		wg.Wait()
+	}()
 
 	for {
 		select {
 		case <-p.done:
-			interval.Stop()
-			timeout.Stop()
-			wg.Wait()
 			return nil
 		case <-timeout.C:
 			close(p.done)
-			interval.Stop()
-			timeout.Stop()
-			wg.Wait()
 			return nil
 		case r := <-recv:
 			err := p.processPacket(r)
@@ -442,9 +441,6 @@ func (p *Pinger) Run() error {
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			close(p.done)
-			interval.Stop()
-			timeout.Stop()
-			wg.Wait()
 			return nil
 		}
 	}
