@@ -415,8 +415,13 @@ func (p *Pinger) Run() error {
 	recv := make(chan *packet, 5)
 	defer close(recv)
 	wg.Add(1)
-	//nolint:errcheck
-	go p.recvICMP(conn, recv, &wg)
+
+	go func() {
+		if err := p.recvICMP(conn, recv, &wg); err != nil {
+			// FIXME: this logs as FATAL but continues
+			logger.Fatalf("error receiving packet: %s", err)
+		}
+	}()
 
 	if handler := p.OnSetup; handler != nil {
 		handler()
@@ -446,7 +451,7 @@ func (p *Pinger) Run() error {
 			err := p.processPacket(r)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("processing received packet: %s", err)
+				logger.Fatalf("error processing received packet: %s", err)
 			}
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
@@ -456,7 +461,7 @@ func (p *Pinger) Run() error {
 			err = p.sendICMP(conn)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("sending packet: %s", err)
+				logger.Fatalf("error sending packet: %s", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
