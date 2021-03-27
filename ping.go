@@ -95,7 +95,7 @@ func New(addr string) *Pinger {
 		Tracker:    r.Uint64(),
 
 		addr:              addr,
-		done:              make(chan bool),
+		done:              make(chan interface{}),
 		id:                r.Intn(math.MaxUint16),
 		ipaddr:            nil,
 		ipv4:              false,
@@ -176,8 +176,9 @@ type Pinger struct {
 	// Source is the source IP address
 	Source string
 
-	// stop chan bool
-	done chan bool
+	// Channel and mutex used to communicate when the Pinger should stop between goroutines.
+	done chan interface{}
+	lock sync.Mutex
 
 	ipaddr *net.IPAddr
 	addr   string
@@ -407,51 +408,62 @@ func (p *Pinger) Run() error {
 		handler()
 	}
 
+	timeout := time.NewTicker(p.Timeout)
+	interval := time.NewTicker(p.Interval)
+	defer func() {
+		p.Stop()
+		interval.Stop()
+		timeout.Stop()
+		wg.Wait()
+	}()
+
 	err = p.sendICMP(conn)
 	if err != nil {
 		return err
 	}
 
-	timeout := time.NewTicker(p.Timeout)
-	defer timeout.Stop()
-	interval := time.NewTicker(p.Interval)
-	defer interval.Stop()
-
 	for {
 		select {
 		case <-p.done:
-			wg.Wait()
 			return nil
 		case <-timeout.C:
-			close(p.done)
-			wg.Wait()
 			return nil
+		case r := <-recv:
+			err := p.processPacket(r)
+			if err != nil {
+				// FIXME: this logs as FATAL but continues
+				fmt.Println("FATAL:", err)
+			}
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
+				interval.Stop()
 				continue
 			}
 			err = p.sendICMP(conn)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
-			}
-		case r := <-recv:
-			err := p.processPacket(r)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL: ", err.Error())
+				fmt.Println("FATAL:", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			close(p.done)
-			wg.Wait()
 			return nil
 		}
 	}
 }
 
 func (p *Pinger) Stop() {
-	close(p.done)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	open := true
+	select {
+	case _, open = <-p.done:
+	default:
+	}
+
+	if open {
+		close(p.done)
+	}
 }
 
 func (p *Pinger) finish() {
@@ -522,7 +534,7 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						continue
 					} else {
-						close(p.done)
+						p.Stop()
 						return err
 					}
 				}
@@ -674,7 +686,7 @@ func (p *Pinger) sendICMP(conn *icmp.PacketConn) error {
 func (p *Pinger) listen(netProto string) (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(netProto, p.Source)
 	if err != nil {
-		close(p.done)
+		p.Stop()
 		return nil, err
 	}
 	return conn, nil
