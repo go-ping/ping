@@ -69,6 +69,7 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -379,11 +380,6 @@ func (p *Pinger) SetLogger(logger Logger) {
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
 func (p *Pinger) Run() error {
-	logger := p.logger
-	if logger == nil {
-		logger = NoopLogger{}
-	}
-
 	var conn packetConn
 	var err error
 	if p.ipaddr == nil {
@@ -395,64 +391,82 @@ func (p *Pinger) Run() error {
 	if conn, err = p.listen(); err != nil {
 		return err
 	}
-	if err = conn.SetFlagTTL(); err != nil {
+	defer conn.Close()
+
+	return p.run(conn)
+}
+
+func (p *Pinger) run(conn packetConn) error {
+	logger := p.logger
+	if logger == nil {
+		logger = NoopLogger{}
+	}
+
+	if err := conn.SetFlagTTL(); err != nil {
 		return err
 	}
-	defer conn.Close()
 	defer p.finish()
 
-	var wg sync.WaitGroup
 	recv := make(chan *packet, 5)
 	defer close(recv)
-	wg.Add(1)
-	//nolint:errcheck
-	go p.recvICMP(conn, recv, &wg)
 
 	if handler := p.OnSetup; handler != nil {
 		handler()
 	}
 
-	timeout := time.NewTicker(p.Timeout)
-	interval := time.NewTicker(p.Interval)
-	defer func() {
-		p.Stop()
-		interval.Stop()
-		timeout.Stop()
-		wg.Wait()
-	}()
+	g := new(errgroup.Group)
 
-	err = p.sendICMP(conn)
-	if err != nil {
-		return err
-	}
+	g.Go(func() error {
+		defer p.Stop()
+		return p.recvICMP(conn, recv)
+	})
 
-	for {
-		select {
-		case <-p.done:
-			return nil
-		case <-timeout.C:
-			return nil
-		case r := <-recv:
-			err := p.processPacket(r)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("processing received packet: %s", err)
+	g.Go(func() error {
+		timeout := time.NewTicker(p.Timeout)
+		interval := time.NewTicker(p.Interval)
+		defer func() {
+			p.Stop()
+			interval.Stop()
+			timeout.Stop()
+		}()
+
+		if err := p.sendICMP(conn); err != nil {
+			return err
+		}
+
+		for {
+			select {
+			case <-p.done:
+				return nil
+
+			case <-timeout.C:
+				return nil
+
+			case r := <-recv:
+				err := p.processPacket(r)
+				if err != nil {
+					// FIXME: this logs as FATAL but continues
+					logger.Fatalf("processing received packet: %s", err)
+				}
+
+			case <-interval.C:
+				if p.Count > 0 && p.PacketsSent >= p.Count {
+					interval.Stop()
+					continue
+				}
+				err := p.sendICMP(conn)
+				if err != nil {
+					// FIXME: this logs as FATAL but continues
+					logger.Fatalf("sending packet: %s", err)
+				}
 			}
-		case <-interval.C:
-			if p.Count > 0 && p.PacketsSent >= p.Count {
-				interval.Stop()
-				continue
-			}
-			err = p.sendICMP(conn)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("sending packet: %s", err)
+			if p.Count > 0 && p.PacketsRecv >= p.Count {
+				return nil
 			}
 		}
-		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			return nil
-		}
-	}
+	})
+
+	return g.Wait()
 }
 
 func (p *Pinger) Stop() {
@@ -523,10 +537,7 @@ func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
 func (p *Pinger) recvICMP(
 	conn packetConn,
 	recv chan<- *packet,
-	wg *sync.WaitGroup,
 ) error {
-	defer wg.Done()
-
 	// Start by waiting for 50 µs and increase to a possible maximum of ~ 100 ms.
 	expBackoff := newExpBackoff(50*time.Microsecond, 11)
 	delay := expBackoff.Get()
@@ -549,11 +560,9 @@ func (p *Pinger) recvICMP(
 						// Read timeout
 						delay = expBackoff.Get()
 						continue
-					} else {
-						p.Stop()
-						return err
 					}
 				}
+				return err
 			}
 
 			select {
@@ -671,6 +680,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 					continue
 				}
 			}
+			return err
 		}
 		handler := p.OnSend
 		if handler != nil {
