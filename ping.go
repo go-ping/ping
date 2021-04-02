@@ -57,6 +57,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -102,6 +103,7 @@ func New(addr string) *Pinger {
 		network:           "ip",
 		protocol:          "udp",
 		awaitingSequences: map[int]struct{}{},
+		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
 }
 
@@ -192,6 +194,8 @@ type Pinger struct {
 	network string
 	// protocol is "icmp" or "udp".
 	protocol string
+
+	logger Logger
 }
 
 type packet struct {
@@ -367,10 +371,20 @@ func (p *Pinger) Privileged() bool {
 	return p.protocol == "icmp"
 }
 
+// SetLogger sets the logger to be used to log events from the pinger.
+func (p *Pinger) SetLogger(logger Logger) {
+	p.logger = logger
+}
+
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
 func (p *Pinger) Run() error {
+	logger := p.logger
+	if logger == nil {
+		logger = NoopLogger{}
+	}
+
 	var conn *icmp.PacketConn
 	var err error
 	if p.ipaddr == nil {
@@ -432,7 +446,7 @@ func (p *Pinger) Run() error {
 			err := p.processPacket(r)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL:", err)
+				logger.Fatalf("processing received packet: %s", err)
 			}
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
@@ -442,7 +456,7 @@ func (p *Pinger) Run() error {
 			err = p.sendICMP(conn)
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
-				fmt.Println("FATAL:", err)
+				logger.Fatalf("sending packet: %s", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
