@@ -537,8 +537,8 @@ func (p *Pinger) recvICMP(
 ) error {
 	defer wg.Done()
 
-	// Start by waiting for 100 µs and increase to a possible maximum of ~ 100 ms.
-	expBackoff := newExpBackoff(100*time.Microsecond, 10)
+	// Start by waiting for 50 µs and increase to a possible maximum of ~ 100 ms.
+	expBackoff := newExpBackoff(50*time.Microsecond, 11)
 	delay := expBackoff.Get()
 
 	for {
