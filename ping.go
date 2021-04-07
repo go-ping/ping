@@ -512,19 +512,42 @@ func (p *Pinger) Statistics() *Statistics {
 	return &s
 }
 
+type expBackoff struct {
+	baseDelay time.Duration
+	maxExp    int64
+	c         int64
+}
+
+func (b *expBackoff) Get() time.Duration {
+	if b.c < b.maxExp {
+		b.c++
+	}
+
+	return b.baseDelay * time.Duration(rand.Int63n(1<<b.c))
+}
+
+func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
+	return expBackoff{baseDelay: baseDelay, maxExp: maxExp}
+}
+
 func (p *Pinger) recvICMP(
 	conn *icmp.PacketConn,
 	recv chan<- *packet,
 	wg *sync.WaitGroup,
 ) error {
 	defer wg.Done()
+
+	// Start by waiting for 50 µs and increase to a possible maximum of ~ 100 ms.
+	expBackoff := newExpBackoff(50*time.Microsecond, 11)
+	delay := expBackoff.Get()
+
 	for {
 		select {
 		case <-p.done:
 			return nil
 		default:
 			bytes := make([]byte, p.getMessageLength())
-			if err := conn.SetReadDeadline(time.Now().Add(time.Millisecond * 100)); err != nil {
+			if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
 				return err
 			}
 			var n, ttl int
@@ -546,6 +569,7 @@ func (p *Pinger) recvICMP(
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
 						// Read timeout
+						delay = expBackoff.Get()
 						continue
 					} else {
 						p.Stop()
