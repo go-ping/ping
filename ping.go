@@ -88,6 +88,8 @@ var (
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(getSeed()))
 	firstUUID := uuid.New()
+	var firstSequence = map[uuid.UUID]map[int]struct{}{}
+	firstSequence[firstUUID] = make(map[int]struct{})
 	return &Pinger{
 		Count:      -1,
 		Interval:   time.Second,
@@ -103,7 +105,7 @@ func New(addr string) *Pinger {
 		ipv4:              false,
 		network:           "ip",
 		protocol:          "udp",
-		awaitingSequences: map[int]struct{}{},
+		awaitingSequences: firstSequence,
 		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
 }
@@ -193,7 +195,7 @@ type Pinger struct {
 	id       int
 	sequence int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	awaitingSequences map[int]struct{}
+	awaitingSequences map[uuid.UUID]map[int]struct{}
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -652,7 +654,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
-		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
+		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
@@ -660,7 +662,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.awaitingSequences, pkt.Seq)
+		delete(p.awaitingSequences[*pktUUID], pkt.Seq)
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
@@ -681,11 +683,12 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	currentUUID, err := p.trackerUUIDs[len(p.trackerUUIDs)-1].MarshalBinary()
+	currentUUID := p.trackerUUIDs[len(p.trackerUUIDs)-1]
+	uuidEncoded, err := currentUUID.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("unable to marshal UUID binary: %w", err)
 	}
-	t := append(timeToBytes(time.Now()), currentUUID...)
+	t := append(timeToBytes(time.Now()), uuidEncoded...)
 	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -727,7 +730,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.awaitingSequences[p.sequence] = struct{}{}
+		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
 		break
