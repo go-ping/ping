@@ -23,7 +23,7 @@ func TestProcessPacket(t *testing.T) {
 		shouldBe1++
 	}
 
-	currentUUID := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1]
+	currentUUID := pinger.getCurrentTrackerUUID()
 	uuidEncoded, err := currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
@@ -67,7 +67,7 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 		shouldBe0++
 	}
 
-	currentUUID, err := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1].MarshalBinary()
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -110,7 +110,7 @@ func TestProcessPacket_IDMismatch(t *testing.T) {
 		shouldBe0++
 	}
 
-	currentUUID, err := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1].MarshalBinary()
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -190,7 +190,7 @@ func TestProcessPacket_LargePacket(t *testing.T) {
 	pinger := makeTestPinger()
 	pinger.Size = 4096
 
-	currentUUID, err := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1].MarshalBinary()
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -543,7 +543,7 @@ func BenchmarkProcessPacket(b *testing.B) {
 	pinger.protocol = "ip4:icmp"
 	pinger.id = 123
 
-	currentUUID, err := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1].MarshalBinary()
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
 	if err != nil {
 		b.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -592,7 +592,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		dups++
 	}
 
-	currentUUID := pinger.trackerUUIDs[len(pinger.trackerUUIDs)-1]
+	currentUUID := pinger.getCurrentTrackerUUID()
 	uuidEncoded, err := currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))

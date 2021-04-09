@@ -607,6 +607,11 @@ func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
 	return nil, nil
 }
 
+// getCurrentTrackerUUID grabs the latest tracker UUID.
+func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
+	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
+}
+
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
 	var proto int
@@ -683,7 +688,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	currentUUID := p.trackerUUIDs[len(p.trackerUUIDs)-1]
+	currentUUID := p.getCurrentTrackerUUID()
 	uuidEncoded, err := currentUUID.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("unable to marshal UUID binary: %w", err)
