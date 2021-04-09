@@ -733,6 +733,12 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
+		if p.sequence > 65535 {
+			newUUID := uuid.New()
+			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
+			p.awaitingSequences[newUUID] = make(map[int]struct{})
+			p.sequence = 0
+		}
 		break
 	}
 
