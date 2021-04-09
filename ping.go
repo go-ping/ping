@@ -589,6 +589,22 @@ func (p *Pinger) recvICMP(
 	}
 }
 
+// getPacketUUID scans the the tracking slice for matches.
+func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
+	var packetUUID uuid.UUID
+	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
+	if err != nil {
+		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
+	}
+
+	for _, item := range p.trackerUUIDs {
+		if item == packetUUID {
+			return &packetUUID, nil
+		}
+	}
+	return nil, nil
+}
+
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
 	var proto int
@@ -627,17 +643,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 				len(pkt.Data), pkt.Data)
 		}
 
-		var packetUUID uuid.UUID
-		err = packetUUID.UnmarshalBinary(pkt.Data[timeSliceLength : timeSliceLength+trackerLength])
-		if err != nil {
-			return fmt.Errorf("error decoding tracking UUID: %w", err)
+		pktUUID, err := p.getPacketUUID(pkt.Data)
+		if err != nil || pktUUID == nil {
+			return err
 		}
+
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
-
-		if packetUUID.String() != p.trackerUUIDs[len(p.trackerUUIDs)-1].String() {
-			return nil
-		}
-
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
