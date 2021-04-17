@@ -55,7 +55,7 @@ func main() {
 	host := flag.Arg(0)
 	pinger, err := ping.NewPinger(host)
 	if err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
+		fmt.Println("ERROR:", err)
 		return
 	}
 
@@ -93,6 +93,6 @@ func main() {
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 	err = pinger.Run()
 	if err != nil {
-		fmt.Printf("Failed to ping target host: %s\n", err)
+		fmt.Println("Failed to ping target host:", err)
 	}
 }

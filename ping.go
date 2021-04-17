@@ -389,7 +389,7 @@ func (p *Pinger) Run() error {
 	var conn packetConn
 	var err error
 	if p.Size < timeSliceLength+trackerLength {
-		return fmt.Errorf("Size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
+		return fmt.Errorf("size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
 	}
 	if p.ipaddr == nil {
 		err = p.Resolve()
@@ -591,7 +591,7 @@ func (p *Pinger) recvICMP(
 	}
 }
 
-// getPacketUUID scans the the tracking slice for matches.
+// getPacketUUID scans the tracking slice for matches.
 func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
 	var packetUUID uuid.UUID
 	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
