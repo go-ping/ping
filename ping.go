@@ -397,11 +397,6 @@ func (p *Pinger) Run() error {
 }
 
 func (p *Pinger) run(conn packetConn) error {
-	logger := p.logger
-	if logger == nil {
-		logger = NoopLogger{}
-	}
-
 	if err := conn.SetFlagTTL(); err != nil {
 		return err
 	}
@@ -414,7 +409,7 @@ func (p *Pinger) run(conn packetConn) error {
 		handler()
 	}
 
-	g := new(errgroup.Group)
+	var g errgroup.Group
 
 	g.Go(func() error {
 		defer p.Stop()
@@ -422,51 +417,64 @@ func (p *Pinger) run(conn packetConn) error {
 	})
 
 	g.Go(func() error {
-		timeout := time.NewTicker(p.Timeout)
-		interval := time.NewTicker(p.Interval)
-		defer func() {
-			p.Stop()
-			interval.Stop()
-			timeout.Stop()
-		}()
-
-		if err := p.sendICMP(conn); err != nil {
-			return err
-		}
-
-		for {
-			select {
-			case <-p.done:
-				return nil
-
-			case <-timeout.C:
-				return nil
-
-			case r := <-recv:
-				err := p.processPacket(r)
-				if err != nil {
-					// FIXME: this logs as FATAL but continues
-					logger.Fatalf("processing received packet: %s", err)
-				}
-
-			case <-interval.C:
-				if p.Count > 0 && p.PacketsSent >= p.Count {
-					interval.Stop()
-					continue
-				}
-				err := p.sendICMP(conn)
-				if err != nil {
-					// FIXME: this logs as FATAL but continues
-					logger.Fatalf("sending packet: %s", err)
-				}
-			}
-			if p.Count > 0 && p.PacketsRecv >= p.Count {
-				return nil
-			}
-		}
+		defer p.Stop()
+		return p.runLoop(conn, recv)
 	})
 
 	return g.Wait()
+}
+
+func (p *Pinger) runLoop(
+	conn packetConn,
+	recvCh <-chan *packet,
+) error {
+	logger := p.logger
+	if logger == nil {
+		logger = NoopLogger{}
+	}
+
+	timeout := time.NewTicker(p.Timeout)
+	interval := time.NewTicker(p.Interval)
+	defer func() {
+		p.Stop()
+		interval.Stop()
+		timeout.Stop()
+	}()
+
+	if err := p.sendICMP(conn); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-p.done:
+			return nil
+
+		case <-timeout.C:
+			return nil
+
+		case r := <-recvCh:
+			err := p.processPacket(r)
+			if err != nil {
+				// FIXME: this logs as FATAL but continues
+				logger.Fatalf("processing received packet: %s", err)
+			}
+
+		case <-interval.C:
+			if p.Count > 0 && p.PacketsSent >= p.Count {
+				interval.Stop()
+				continue
+			}
+			err := p.sendICMP(conn)
+			if err != nil {
+				// FIXME: this logs as FATAL but continues
+				logger.Fatalf("sending packet: %s", err)
+			}
+		}
+		if p.Count > 0 && p.PacketsRecv >= p.Count {
+			return nil
+		}
+	}
 }
 
 func (p *Pinger) Stop() {
