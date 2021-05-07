@@ -3,12 +3,14 @@ package ping
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"runtime/debug"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )
@@ -21,7 +23,12 @@ func TestProcessPacket(t *testing.T) {
 		shouldBe1++
 	}
 
-	data := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID := pinger.getCurrentTrackerUUID()
+	uuidEncoded, err := currentUUID.MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), uuidEncoded...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -31,7 +38,7 @@ func TestProcessPacket(t *testing.T) {
 		Seq:  pinger.sequence,
 		Data: data,
 	}
-	pinger.awaitingSequences[pinger.sequence] = struct{}{}
+	pinger.awaitingSequences[currentUUID][pinger.sequence] = struct{}{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -47,7 +54,7 @@ func TestProcessPacket(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 	AssertTrue(t, shouldBe1 == 1)
 }
@@ -60,7 +67,11 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 		shouldBe0++
 	}
 
-	data := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), currentUUID...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -85,7 +96,7 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 	AssertTrue(t, shouldBe0 == 0)
 }
@@ -99,7 +110,11 @@ func TestProcessPacket_IDMismatch(t *testing.T) {
 		shouldBe0++
 	}
 
-	data := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), currentUUID...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -124,7 +139,7 @@ func TestProcessPacket_IDMismatch(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 	AssertTrue(t, shouldBe0 == 0)
 }
@@ -137,7 +152,11 @@ func TestProcessPacket_TrackerMismatch(t *testing.T) {
 		shouldBe0++
 	}
 
-	data := append(timeToBytes(time.Now()), uintToBytes(999)...)
+	testUUID, err := uuid.New().MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), testUUID...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -162,7 +181,7 @@ func TestProcessPacket_TrackerMismatch(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 	AssertTrue(t, shouldBe0 == 0)
 }
@@ -171,7 +190,11 @@ func TestProcessPacket_LargePacket(t *testing.T) {
 	pinger := makeTestPinger()
 	pinger.Size = 4096
 
-	data := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), currentUUID...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -196,7 +219,7 @@ func TestProcessPacket_LargePacket(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 }
 
@@ -461,7 +484,6 @@ func makeTestPinger() *Pinger {
 	pinger.addr = "127.0.0.1"
 	pinger.protocol = "icmp"
 	pinger.id = 123
-	pinger.Tracker = 456
 	pinger.Size = 0
 
 	return pinger
@@ -520,17 +542,20 @@ func BenchmarkProcessPacket(b *testing.B) {
 	pinger.addr = "127.0.0.1"
 	pinger.protocol = "ip4:icmp"
 	pinger.id = 123
-	pinger.Tracker = 456
 
-	t := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	if err != nil {
+		b.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), currentUUID...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
-		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
+		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
 
 	body := &icmp.Echo{
 		ID:   pinger.id,
 		Seq:  pinger.sequence,
-		Data: t,
+		Data: data,
 	}
 
 	msg := &icmp.Message{
@@ -567,7 +592,12 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		dups++
 	}
 
-	data := append(timeToBytes(time.Now()), uintToBytes(pinger.Tracker)...)
+	currentUUID := pinger.getCurrentTrackerUUID()
+	uuidEncoded, err := currentUUID.MarshalBinary()
+	if err != nil {
+		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+	}
+	data := append(timeToBytes(time.Now()), uuidEncoded...)
 	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -578,7 +608,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		Data: data,
 	}
 	// register the sequence as sent
-	pinger.awaitingSequences[0] = struct{}{}
+	pinger.awaitingSequences[currentUUID][0] = struct{}{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -594,7 +624,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		ttl:    24,
 	}
 
-	err := pinger.processPacket(&pkt)
+	err = pinger.processPacket(&pkt)
 	AssertNoError(t, err)
 	// receive a duplicate
 	err = pinger.processPacket(&pkt)

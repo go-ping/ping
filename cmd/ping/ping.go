@@ -40,7 +40,7 @@ func main() {
 	timeout := flag.Duration("t", time.Second*100000, "")
 	interval := flag.Duration("i", time.Second, "")
 	count := flag.Int("c", -1, "")
-	size := flag.Int("s", 16, "")
+	size := flag.Int("s", 24, "")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -55,7 +55,7 @@ func main() {
 	host := flag.Arg(0)
 	pinger, err := ping.NewPinger(host)
 	if err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
+		fmt.Println("ERROR:", err)
 		return
 	}
 
@@ -93,6 +93,6 @@ func main() {
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
 	err = pinger.Run()
 	if err != nil {
-		fmt.Printf("Failed to ping target host: %s", err)
+		fmt.Println("Failed to ping target host:", err)
 	}
 }
