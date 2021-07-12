@@ -61,6 +61,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -337,6 +338,46 @@ func (p *Pinger) SetAddr(addr string) error {
 // Addr returns the string ip address of the target host.
 func (p *Pinger) Addr() string {
 	return p.addr
+}
+
+// SetSrcAddr set source by interface name or ipv4 address
+// Interface name can be "eth0" or ip like "192.168.1.239"
+func (p *Pinger) SetSrcAddr(iface string) error {
+
+	ipPattern := regexp.MustCompile(`(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}`)
+	if ipPattern.MatchString(iface) {
+		p.Source = iface
+		return nil
+	}
+
+	if ipv4Adrr, err := GetIfaceIpv4Addr(iface); err != nil {
+		return err
+	} else {
+		p.Source = ipv4Adrr
+		return nil
+	}
+}
+
+// GetIfaceIpv4Adrr is helper function which returns ipv4 of the supplied interface name
+func GetIfaceIpv4Addr(interfaceName string) (ipv4Adrr string, err error) {
+	var ipv4Addr net.IP
+	if iface, err := net.InterfaceByName(interfaceName); err != nil {
+		return "", errors.New("interface name not found")
+	} else {
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			if ipv4Addr = addr.(*net.IPNet).IP.To4(); ipv4Addr != nil {
+				break
+			}
+		}
+		if ipv4Addr != nil {
+			return ipv4Addr.String(), nil
+		} else {
+			return "", errors.New("interface has no ipv4 address")
+		}
+
+	}
+
 }
 
 // SetNetwork allows configuration of DNS resolution.
