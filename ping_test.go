@@ -253,6 +253,19 @@ func TestNewPingerValid(t *testing.T) {
 	err = p.Resolve()
 	AssertNoError(t, err)
 	AssertEqualStrings(t, "localhost", p.Addr())
+	// Test setting source ipv4 address
+	err = p.SetSrcAddr(GetLocalIPv4())
+	AssertNoError(t, err)
+	AssertTrue(t, p.isSource(GetLocalIPv4()))
+	// Test setting source ipv6 address
+	err = p.SetSrcAddr(GetLocalIPv6())
+	AssertNoError(t, err)
+	AssertTrue(t, p.isSource(GetLocalIPv6()))
+	// Test Setting source interface name
+	iface, ip := GetLocalIface()
+	err = p.SetSrcAddr(iface)
+	AssertNoError(t, err)
+	AssertTrue(t, p.isSource(ip))
 	// DNS names should resolve into IP addresses
 	AssertNotEqualStrings(t, "localhost", p.IPAddr().String())
 	AssertTrue(t, isIPv4(p.IPAddr().IP))
@@ -465,6 +478,49 @@ func makeTestPinger() *Pinger {
 	pinger.Size = 0
 
 	return pinger
+}
+func (p *Pinger) isSource(ip string) bool {
+	return ip == p.Source
+}
+
+func GetLocalIface() (ifaceName string, ip string) {
+	list, err := net.Interfaces()
+	if err != nil {
+		panic(err)
+	}
+	addrs, _ := list[1].Addrs()
+	return list[1].Name, addrs[0].(*net.IPNet).IP.To4().String()
+}
+
+func GetLocalIPv4() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
+}
+func GetLocalIPv6() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// check the address type and if it is not a loopback the display it
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To16() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
 }
 
 func AssertNoError(t *testing.T, err error) {
