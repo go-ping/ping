@@ -339,6 +339,58 @@ func (p *Pinger) Addr() string {
 	return p.addr
 }
 
+// SetSrcAddr set source by interface name or ipv4 address
+// Interface name can be "eth0" or ip like "192.168.1.239"
+func (p *Pinger) SetSrcAddr(iface string) error {
+	if ip := net.ParseIP(iface); ip != nil {
+		if ip.To4() != nil {
+			p.SetNetwork("ipv4")
+		} else {
+			p.SetNetwork("ipv6")
+		}
+		p.Source = iface
+		return nil
+	}
+	if ipAddr, err := p.GetIfaceAddrs(iface); err != nil {
+		return err
+	} else {
+		p.Source = ipAddr[0].String() // As the private IP range is generally in ipv4, so as default it sets ipv4 of the iface
+		return nil
+	}
+}
+
+// GetIfaceAddrs is helper function which returns ipv4 and ipv6 as a array of net.IP type of supplied interface name
+// GetIfaceAddrs returns [ipv4,ipv6] of type net.IP which can be parsed to string
+func (p *Pinger) GetIfaceAddrs(interfaceName string) (addrs []net.IP, err error) {
+	var (
+		ipAddrIPv4 net.IP
+		ipAddrIPv6 net.IP
+		ipAddrs    []net.IP
+	)
+	if iface, err := net.InterfaceByName(interfaceName); err != nil {
+		return ipAddrs, errors.New("interface name not found")
+	} else {
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			if ipv4 := addr.(*net.IPNet).IP.To4(); ipv4 != nil {
+				ipAddrIPv4 = ipv4
+			}
+			if ipv6 := addr.(*net.IPNet).IP.To16(); ipv6 != nil {
+				ipAddrIPv6 = ipv6
+			}
+		}
+		ipAddrs = append(ipAddrs, ipAddrIPv4)
+		ipAddrs = append(ipAddrs, ipAddrIPv6)
+		if ipAddrs != nil {
+			return ipAddrs, nil
+		} else {
+			return ipAddrs, errors.New("interface has no ipv4 address")
+		}
+
+	}
+
+}
+
 // SetNetwork allows configuration of DNS resolution.
 // * "ip" will automatically select IPv4 or IPv6.
 // * "ip4" will select IPv4.
