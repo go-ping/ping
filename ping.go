@@ -733,7 +733,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			}
 			handler(outPkt)
 		}
-		// mark this sequence as in-flight
+		// mark this packet as in-flight
 		p.InFlightPackets[p.sequence] = InFlightPacket{
 			DispatchedTime: time.Now(),
 			Seq:            p.sequence,
