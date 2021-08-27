@@ -31,7 +31,7 @@ func TestProcessPacket(t *testing.T) {
 		Seq:  pinger.sequence,
 		Data: data,
 	}
-	pinger.awaitingSequences[pinger.sequence] = struct{}{}
+	pinger.awaitingSequences[pinger.sequence] = AwaitingPacket{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -578,7 +578,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		Data: data,
 	}
 	// register the sequence as sent
-	pinger.awaitingSequences[0] = struct{}{}
+	pinger.awaitingSequences[0] = AwaitingPacket{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
