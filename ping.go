@@ -178,7 +178,7 @@ type Pinger struct {
 	OnFinish func(*Statistics)
 
 	// OnTimeout is called when packet timeout
-	OnTimeout func(*InFlightPacket)
+	OnTimeout func(int, *InFlightPacket)
 
 	// OnDuplicateRecv is called when a packet is received that has already been received.
 	OnDuplicateRecv func(*Packet)
@@ -219,7 +219,6 @@ type Pinger struct {
 
 type InFlightPacket struct {
 	DispatchedTime time.Time
-	Seq            int
 }
 
 type packet struct {
@@ -531,7 +530,7 @@ func (p *Pinger) CheckInFlightPackets() {
 		if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
 			delete(p.InFlightPackets, seq)
 			if p.OnTimeout != nil {
-				p.OnTimeout(&pkt)
+				p.OnTimeout(seq, &pkt)
 			}
 		}
 	}
@@ -790,7 +789,6 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		// mark this sequence as in-flight
 		p.InFlightPackets[currentUUID][p.sequence] = InFlightPacket{
 			DispatchedTime: time.Now(),
-			Seq:            p.sequence,
 		}
 		p.PacketsSent++
 		p.sequence++

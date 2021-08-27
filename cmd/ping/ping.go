@@ -77,8 +77,8 @@ func main() {
 		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v (DUP!)\n",
 			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
 	}
-	pinger.OnTimeout = func(pkt *ping.InFlightPacket) {
-		fmt.Printf("TIMEOUT icmp_seq=%d time=%v\n", pkt.Seq, pkt.DispatchedTime)
+	pinger.OnTimeout = func(seq int, pkt *ping.InFlightPacket) {
+		fmt.Printf("TIMEOUT icmp_seq=%d time=%v\n", seq, pkt.DispatchedTime)
 	}
 	pinger.OnFinish = func(stats *ping.Statistics) {
 		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
