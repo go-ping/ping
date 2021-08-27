@@ -197,7 +197,7 @@ type Pinger struct {
 	ipv4     bool
 	id       int
 	sequence int
-	// InFlightPackets are in-flight sequence numbers we keep track of to help remove duplicate receipts
+	// InFlightPackets is used to keep track of in-flight packets for the purposes of determining timeouts and duplicates
 	InFlightPackets map[int]InFlightPacket
 	// network is one of "ip", "ip4", or "ip6".
 	network string
