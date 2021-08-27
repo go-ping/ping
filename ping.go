@@ -88,8 +88,8 @@ var (
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(getSeed()))
 	firstUUID := uuid.New()
-	var firstSequence = map[uuid.UUID]map[int]struct{}{}
-	firstSequence[firstUUID] = make(map[int]struct{})
+	var firstSequence = map[uuid.UUID]map[int]InFlightPacket{}
+	firstSequence[firstUUID] = make(map[int]InFlightPacket{})
 	return &Pinger{
 		Count:         -1,
 		Interval:      time.Second,
@@ -99,17 +99,17 @@ func New(addr string) *Pinger {
 		PacketTimeout: time.Duration(math.MaxInt64),
 		Tracker:       r.Uint64(),
 
-		addr:              addr,
-		done:              make(chan interface{}),
-		id:                r.Intn(math.MaxUint16),
-		trackerUUIDs:      []uuid.UUID{firstUUID},
-		ipaddr:            nil,
-		ipv4:              false,
-		network:           "ip",
-		protocol:          "udp",
-		awaitingSequences: firstSequence,
-		TTL:               64,
-		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
+		addr:            addr,
+		done:            make(chan interface{}),
+		id:              r.Intn(math.MaxUint16),
+		trackerUUIDs:    []uuid.UUID{firstUUID},
+		ipaddr:          nil,
+		ipv4:            false,
+		network:         "ip",
+		protocol:        "udp",
+		InFlightPackets: map[int]InFlightPacket{},
+		TTL:             64,
+		logger:          StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
 }
 
@@ -177,7 +177,7 @@ type Pinger struct {
 	OnFinish func(*Statistics)
 
 	// OnTimeout is called when packet timeout
-	OnTimeout func(*AwaitingPacket)
+	OnTimeout func(*InFlightPacket)
 
 	// OnDuplicateRecv is called when a packet is received that has already been received.
 	OnDuplicateRecv func(*Packet)
@@ -205,7 +205,7 @@ type Pinger struct {
 	id       int
 	sequence int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	awaitingSequences map[uuid.UUID]map[int]struct{}
+	awaitingSequences map[uuid.UUID]map[int]InFlightPacket
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -216,7 +216,7 @@ type Pinger struct {
 	TTL int
 }
 
-type AwaitingPacket struct {
+type InFlightPacket struct {
 	DispatchedTime time.Time
 	Seq            int
 }
@@ -491,7 +491,7 @@ func (p *Pinger) runLoop(
 			return nil
 
 		case <-timeout.C:
-			p.CheckAwaitingSequences()
+			p.CheckInFlightPackets()
 			return nil
 
 		case r := <-recvCh:
@@ -502,7 +502,7 @@ func (p *Pinger) runLoop(
 			}
 
 		case <-interval.C:
-			p.CheckAwaitingSequences()
+			p.CheckInFlightPackets()
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				interval.Stop()
 				continue
@@ -520,14 +520,14 @@ func (p *Pinger) runLoop(
 	}
 }
 
-func (p *Pinger) CheckAwaitingSequences() {
+func (p *Pinger) CheckInFlightPackets() {
 	// Loop through each item in map
 	currentTime := time.Now()
-	for seq, pkt := range p.awaitingSequences {
+	for seq, pkt := range p.InFlightPackets {
 		if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
-			delete(p.awaitingSequences, seq)
+			delete(p.InFlightPackets, seq)
 			if p.OnTimeout != nil {
-				p.OnTimeout(&awaiting)
+				p.OnTimeout(&pkt)
 			}
 		}
 	}
@@ -707,7 +707,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
-		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
+		if _, inflight := p.InFlightPackets[*pktUUID][pkt.Seq]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
@@ -715,7 +715,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.awaitingSequences[*pktUUID], pkt.Seq)
+		delete(p.InFlightPackets[*pktUUID], pkt.Seq)
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
@@ -784,13 +784,16 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
+		p.awaitingSequences[currentUUID][p.sequence] = InFlightPacket{
+			DispatchedTime: time.Now(),
+			Seq:            p.sequence,
+		}
 		p.PacketsSent++
 		p.sequence++
 		if p.sequence > 65535 {
 			newUUID := uuid.New()
 			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-			p.awaitingSequences[newUUID] = make(map[int]struct{})
+			p.awaitingSequences[newUUID] = make(map[int]InFlightPacket)
 			p.sequence = 0
 		}
 		break
