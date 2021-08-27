@@ -96,15 +96,15 @@ func New(addr string) *Pinger {
 		PacketTimeout: time.Duration(math.MaxInt64),
 		Tracker:       r.Uint64(),
 
-		addr:              addr,
-		done:              make(chan interface{}),
-		id:                r.Intn(math.MaxUint16),
-		ipaddr:            nil,
-		ipv4:              false,
-		network:           "ip",
-		protocol:          "udp",
-		awaitingSequences: map[int]AwaitingPacket{},
-		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
+		addr:            addr,
+		done:            make(chan interface{}),
+		id:              r.Intn(math.MaxUint16),
+		ipaddr:          nil,
+		ipv4:            false,
+		network:         "ip",
+		protocol:        "udp",
+		InFlightPackets: map[int]InFlightPacket{},
+		logger:          StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
 }
 
@@ -172,7 +172,7 @@ type Pinger struct {
 	OnFinish func(*Statistics)
 
 	// OnTimeout is called when packet timeout
-	OnTimeout func(*AwaitingPacket)
+	OnTimeout func(*InFlightPacket)
 
 	// OnDuplicateRecv is called when a packet is received that has already been received.
 	OnDuplicateRecv func(*Packet)
@@ -196,8 +196,8 @@ type Pinger struct {
 	ipv4     bool
 	id       int
 	sequence int
-	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	awaitingSequences map[int]AwaitingPacket
+	// InFlightPackets are in-flight sequence numbers we keep track of to help remove duplicate receipts
+	InFlightPackets map[int]InFlightPacket
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -206,7 +206,7 @@ type Pinger struct {
 	logger Logger
 }
 
-type AwaitingPacket struct {
+type InFlightPacket struct {
 	DispatchedTime time.Time
 	Seq            int
 }
@@ -464,7 +464,7 @@ func (p *Pinger) runLoop(
 			return nil
 
 		case <-timeout.C:
-			p.CheckAwaitingSequences()
+			p.CheckInFlightPackets()
 			return nil
 
 		case r := <-recvCh:
@@ -475,7 +475,7 @@ func (p *Pinger) runLoop(
 			}
 
 		case <-interval.C:
-			p.CheckAwaitingSequences()
+			p.CheckInFlightPackets()
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				interval.Stop()
 				continue
@@ -493,14 +493,14 @@ func (p *Pinger) runLoop(
 	}
 }
 
-func (p *Pinger) CheckAwaitingSequences() {
+func (p *Pinger) CheckInFlightPackets() {
 	// Loop through each item in map
 	currentTime := time.Now()
-	for seq, pkt := range p.awaitingSequences {
+	for seq, pkt := range p.InFlightPackets {
 		if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
-			delete(p.awaitingSequences, seq)
+			delete(p.InFlightPackets, seq)
 			if p.OnTimeout != nil {
-				p.OnTimeout(&awaiting)
+				p.OnTimeout(&pkt)
 			}
 		}
 	}
@@ -659,7 +659,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
-		if _, inflight := p.awaitingSequences[pkt.Seq]; !inflight {
+		if _, inflight := p.InFlightPackets[pkt.Seq]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
@@ -667,7 +667,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.awaitingSequences, pkt.Seq)
+		delete(p.InFlightPackets, pkt.Seq)
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
@@ -730,7 +730,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.awaitingSequences[p.sequence] = AwaitingPacket{
+		p.InFlightPackets[p.sequence] = InFlightPacket{
 			DispatchedTime: time.Now(),
 			Seq:            p.sequence,
 		}
