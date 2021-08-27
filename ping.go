@@ -90,7 +90,7 @@ func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(getSeed()))
 	firstUUID := uuid.New()
 	var firstSequence = map[uuid.UUID]map[int]InFlightPacket{}
-	firstSequence[firstUUID] = make(map[int]InFlightPacket{})
+	firstSequence[firstUUID] = make(map[int]InFlightPacket)
 	return &Pinger{
 		Count:         -1,
 		Interval:      time.Second,
@@ -108,7 +108,7 @@ func New(addr string) *Pinger {
 		ipv4:            false,
 		network:         "ip",
 		protocol:        "udp",
-		InFlightPackets: map[int]InFlightPacket{},
+		InFlightPackets: firstSequence,
 		TTL:             64,
 		logger:          StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
@@ -206,7 +206,7 @@ type Pinger struct {
 	id       int
 	sequence int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	awaitingSequences map[uuid.UUID]map[int]InFlightPacket
+	InFlightPackets map[uuid.UUID]map[int]InFlightPacket
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -788,7 +788,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.awaitingSequences[currentUUID][p.sequence] = InFlightPacket{
+		p.InFlightPackets[currentUUID][p.sequence] = InFlightPacket{
 			DispatchedTime: time.Now(),
 			Seq:            p.sequence,
 		}
@@ -797,7 +797,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		if p.sequence > 65535 {
 			newUUID := uuid.New()
 			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-			p.awaitingSequences[newUUID] = make(map[int]InFlightPacket)
+			p.InFlightPackets[newUUID] = make(map[int]InFlightPacket)
 			p.sequence = 0
 		}
 		break
