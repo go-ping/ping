@@ -93,7 +93,7 @@ func New(addr string) *Pinger {
 		RecordRtts:    true,
 		Size:          timeSliceLength + trackerLength,
 		Timeout:       time.Duration(math.MaxInt64),
-		PacketTimeout: time.Duration(1 * time.Second),
+		PacketTimeout: time.Duration(math.MaxInt64),
 		Tracker:       r.Uint64(),
 
 		addr:              addr,
