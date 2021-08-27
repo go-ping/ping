@@ -91,11 +91,13 @@ func New(addr string) *Pinger {
 	var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	firstSequence[firstUUID] = make(map[int]struct{})
 	return &Pinger{
-		Count:      -1,
-		Interval:   time.Second,
-		RecordRtts: true,
-		Size:       timeSliceLength + trackerLength,
-		Timeout:    time.Duration(math.MaxInt64),
+		Count:         -1,
+		Interval:      time.Second,
+		RecordRtts:    true,
+		Size:          timeSliceLength + trackerLength,
+		Timeout:       time.Duration(math.MaxInt64),
+		PacketTimeout: time.Duration(1 * time.Second),
+		Tracker:       r.Uint64(),
 
 		addr:              addr,
 		done:              make(chan interface{}),
@@ -125,6 +127,10 @@ type Pinger struct {
 	// Timeout specifies a timeout before ping exits, regardless of how many
 	// packets have been received.
 	Timeout time.Duration
+
+	// PacketTimeout specifies a timeout before the OnTimeout function is called
+	// for a packet not being received
+	PacketTimeout time.Duration
 
 	// Count tells pinger to stop after sending (and receiving) Count echo
 	// packets. If this option is not specified, pinger will operate until
@@ -170,6 +176,9 @@ type Pinger struct {
 	// OnFinish is called when Pinger exits
 	OnFinish func(*Statistics)
 
+	// OnTimeout is called when packet timeout
+	OnTimeout func(*AwaitingPacket)
+
 	// OnDuplicateRecv is called when a packet is received that has already been received.
 	OnDuplicateRecv func(*Packet)
 
@@ -205,6 +214,11 @@ type Pinger struct {
 	logger Logger
 
 	TTL int
+}
+
+type AwaitingPacket struct {
+	DispatchedTime time.Time
+	Seq            int
 }
 
 type packet struct {
@@ -477,6 +491,7 @@ func (p *Pinger) runLoop(
 			return nil
 
 		case <-timeout.C:
+			p.CheckAwaitingSequences()
 			return nil
 
 		case r := <-recvCh:
@@ -487,11 +502,13 @@ func (p *Pinger) runLoop(
 			}
 
 		case <-interval.C:
+			p.CheckAwaitingSequences()
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				interval.Stop()
 				continue
 			}
 			err := p.sendICMP(conn)
+
 			if err != nil {
 				// FIXME: this logs as FATAL but continues
 				logger.Fatalf("sending packet: %s", err)
@@ -499,6 +516,19 @@ func (p *Pinger) runLoop(
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
 			return nil
+		}
+	}
+}
+
+func (p *Pinger) CheckAwaitingSequences() {
+	// Loop through each item in map
+	currentTime := time.Now()
+	for seq, awaiting := range p.awaitingSequences {
+		if awaiting.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
+			delete(p.awaitingSequences, seq)
+			if p.OnTimeout != nil {
+				p.OnTimeout(&awaiting)
+			}
 		}
 	}
 }
