@@ -77,6 +77,7 @@ const (
 	trackerLength    = 8
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
+	maxPacketTimeout = time.Duration(math.MaxInt64)
 )
 
 var (
@@ -495,6 +496,9 @@ func (p *Pinger) runLoop(
 
 func (p *Pinger) CheckInFlightPackets() {
 	// Loop through each item in map
+	if p.PacketTimeout == maxPacketTimeout {
+		return
+	}
 	currentTime := time.Now()
 	for seq, pkt := range p.InFlightPackets {
 		if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
