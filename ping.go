@@ -523,8 +523,8 @@ func (p *Pinger) runLoop(
 func (p *Pinger) CheckAwaitingSequences() {
 	// Loop through each item in map
 	currentTime := time.Now()
-	for seq, awaiting := range p.awaitingSequences {
-		if awaiting.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
+	for seq, pkt := range p.awaitingSequences {
+		if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
 			delete(p.awaitingSequences, seq)
 			if p.OnTimeout != nil {
 				p.OnTimeout(&awaiting)
