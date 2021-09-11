@@ -611,8 +611,12 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		if !p.matchID(pkt.ID) {
-			return nil
+		// If we are priviledged, we can match icmp.ID
+		if p.protocol == "icmp" {
+			// Check if reply from same ID
+			if !p.matchID(pkt.ID) {
+				return nil
+			}
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
