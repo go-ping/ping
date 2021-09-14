@@ -2,6 +2,7 @@ package ping
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -761,4 +762,47 @@ func TestRunOK(t *testing.T) {
 	AssertTrue(t, stats.PacketsRecv == 1)
 	AssertTrue(t, stats.MinRtt >= 10*time.Millisecond)
 	AssertTrue(t, stats.MinRtt <= 12*time.Millisecond)
+}
+
+func TestRunWithContext(t *testing.T) {
+	t.Parallel()
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	testCases := map[string]struct {
+		ctx      context.Context
+		count    int // used to avoid race condition
+		interval time.Duration
+		err      error
+	}{
+		"success": {
+			ctx:   context.Background(),
+			count: 1,
+		},
+		"canceled context": {
+			ctx: canceledCtx,
+			// to avoid race condition in the select block
+			count:    100,
+			interval: time.Second,
+			err:      context.Canceled,
+		},
+	}
+
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			pinger := New("127.0.0.1")
+			pinger.SetPrivileged(true)
+			pinger.Count = testCase.count
+
+			err := pinger.RunWithContext(testCase.ctx)
+
+			if !errors.Is(err, testCase.err) {
+				t.Errorf("expected %v but got %v", testCase.err, err)
+			}
+		})
+	}
 }

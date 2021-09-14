@@ -54,6 +54,7 @@ package ping
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -380,6 +381,25 @@ func (p *Pinger) Privileged() bool {
 // SetLogger sets the logger to be used to log events from the pinger.
 func (p *Pinger) SetLogger(logger Logger) {
 	p.logger = logger
+}
+
+// RunWithContext runs the pinger and stops it when/if the context is canceled.
+// If Count or Interval are not specified, it will run continuously until
+// its context is canceled.
+func (p *Pinger) RunWithContext(ctx context.Context) (err error) {
+	errCh := make(chan error)
+	go func() {
+		errCh <- p.Run()
+	}()
+
+	select {
+	case <-ctx.Done():
+		p.Stop()
+		<-errCh
+		return ctx.Err()
+	case err = <-errCh:
+		return err
+	}
 }
 
 // Run runs the pinger. This is a blocking function that will exit when it's
