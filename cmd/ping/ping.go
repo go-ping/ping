@@ -10,7 +10,7 @@ import (
 	"github.com/go-ping/ping"
 )
 
-var usage = `
+const usage = `
 Usage:
 
     ping [-c count] [-i interval] [-t timeout] [--privileged] host
@@ -37,10 +37,12 @@ Examples:
 `
 
 func main() {
-	timeout := flag.Duration("t", time.Second*100000, "")
+	const defaultTimeout = time.Second * 100000
+	timeout := flag.Duration("t", defaultTimeout, "")
 	interval := flag.Duration("i", time.Second, "")
 	count := flag.Int("c", -1, "")
-	size := flag.Int("s", 24, "")
+	const defaultSize = 24
+	size := flag.Int("s", defaultSize, "")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)

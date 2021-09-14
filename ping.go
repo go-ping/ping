@@ -56,12 +56,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"log"
 	"math"
 	"math/rand"
 	"net"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -77,16 +77,13 @@ const (
 	trackerLength    = len(uuid.UUID{})
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
-)
-
-var (
-	ipv4Proto = map[string]string{"icmp": "ip4:icmp", "udp": "udp4"}
-	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
+	icmpStr          = "icmp"
+	maxUint16        = 65535
 )
 
 // New returns a new Pinger struct pointer.
 func New(addr string) *Pinger {
-	r := rand.New(rand.NewSource(getSeed()))
+	r := rand.New(newSource()) //nolint:gosec
 	firstUUID := uuid.New()
 	var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	firstSequence[firstUUID] = make(map[int]struct{})
@@ -99,7 +96,7 @@ func New(addr string) *Pinger {
 
 		addr:              addr,
 		done:              make(chan interface{}),
-		id:                r.Intn(math.MaxUint16),
+		id:                r.Intn(maxUint16),
 		trackerUUIDs:      []uuid.UUID{firstUUID},
 		ipaddr:            nil,
 		ipv4:              false,
@@ -227,8 +224,8 @@ type Packet struct {
 	// Seq is the ICMP sequence number.
 	Seq int
 
-	// TTL is the Time To Live on the packet.
-	Ttl int
+	// Ttl is the Time To Live on the packet.
+	Ttl int //nolint:revive
 }
 
 // Statistics represent the stats of a currently running or finished
@@ -292,7 +289,7 @@ func (p *Pinger) updateStatistics(pkt *Packet) {
 	delta := pkt.Rtt - p.avgRtt
 	p.avgRtt += delta / pktCount
 	delta2 := pkt.Rtt - p.avgRtt
-	p.stddevm2 += delta * delta2
+	p.stddevm2 += delta * delta2 //nolint:durationcheck
 
 	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
 }
@@ -310,10 +307,12 @@ func (p *Pinger) IPAddr() *net.IPAddr {
 	return p.ipaddr
 }
 
+var ErrAddrCannotBeEmpty = errors.New("addr cannot be empty")
+
 // Resolve does the DNS lookup for the Pinger address and sets IP protocol.
 func (p *Pinger) Resolve() error {
 	if len(p.addr) == 0 {
-		return errors.New("addr cannot be empty")
+		return ErrAddrCannotBeEmpty
 	}
 	ipaddr, err := net.ResolveIPAddr(p.network, p.addr)
 	if err != nil {
@@ -366,7 +365,7 @@ func (p *Pinger) SetNetwork(n string) {
 // NOTE: setting to true requires that it be run with super-user privileges.
 func (p *Pinger) SetPrivileged(privileged bool) {
 	if privileged {
-		p.protocol = "icmp"
+		p.protocol = icmpStr
 	} else {
 		p.protocol = "udp"
 	}
@@ -374,13 +373,15 @@ func (p *Pinger) SetPrivileged(privileged bool) {
 
 // Privileged returns whether pinger is running in privileged mode.
 func (p *Pinger) Privileged() bool {
-	return p.protocol == "icmp"
+	return p.protocol == icmpStr
 }
 
 // SetLogger sets the logger to be used to log events from the pinger.
 func (p *Pinger) SetLogger(logger Logger) {
 	p.logger = logger
 }
+
+var ErrSizeIsTooSmall = errors.New("size is too small")
 
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
@@ -389,7 +390,8 @@ func (p *Pinger) Run() error {
 	var conn packetConn
 	var err error
 	if p.Size < timeSliceLength+trackerLength {
-		return fmt.Errorf("size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
+		return fmt.Errorf("%w: size %d is less than minimum required size %d",
+			ErrSizeIsTooSmall, p.Size, timeSliceLength+trackerLength)
 	}
 	if p.ipaddr == nil {
 		err = p.Resolve()
@@ -411,7 +413,8 @@ func (p *Pinger) run(conn packetConn) error {
 	}
 	defer p.finish()
 
-	recv := make(chan *packet, 5)
+	const packetSize = 5
+	recv := make(chan *packet, packetSize)
 	defer close(recv)
 
 	if handler := p.OnSetup; handler != nil {
@@ -516,7 +519,8 @@ func (p *Pinger) Statistics() *Statistics {
 	p.statsMu.RLock()
 	defer p.statsMu.RUnlock()
 	sent := p.PacketsSent
-	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
+	const hundred = 100
+	loss := float64(sent-p.PacketsRecv) / float64(sent) * hundred
 	s := Statistics{
 		PacketsSent:           sent,
 		PacketsRecv:           p.PacketsRecv,
@@ -544,7 +548,7 @@ func (b *expBackoff) Get() time.Duration {
 		b.c++
 	}
 
-	return b.baseDelay * time.Duration(rand.Int63n(1<<b.c))
+	return b.baseDelay * time.Duration(rand.Int63n(1<<b.c)) //nolint:gosec
 }
 
 func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
@@ -556,7 +560,9 @@ func (p *Pinger) recvICMP(
 	recv chan<- *packet,
 ) error {
 	// Start by waiting for 50 µs and increase to a possible maximum of ~ 100 ms.
-	expBackoff := newExpBackoff(50*time.Microsecond, 11)
+	const baseDelay = 50 * time.Microsecond
+	const maxExp = 11
+	expBackoff := newExpBackoff(baseDelay, maxExp)
 	delay := expBackoff.Get()
 
 	for {
@@ -572,7 +578,8 @@ func (p *Pinger) recvICMP(
 			var err error
 			n, ttl, _, err = conn.ReadFrom(bytes)
 			if err != nil {
-				if neterr, ok := err.(*net.OpError); ok {
+				neterr := new(net.OpError)
+				if errors.As(err, &neterr) {
 					if neterr.Timeout() {
 						// Read timeout
 						delay = expBackoff.Get()
@@ -612,6 +619,12 @@ func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
 	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
 }
 
+var (
+	errParseICMPMessage         = errors.New("error parsing icmp message")
+	errInsufficientDataReceived = errors.New("insufficient data received")
+	errInvalidICMPEchoReply     = errors.New("invalid ICMP echo reply")
+)
+
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
 	var proto int
@@ -624,7 +637,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var m *icmp.Message
 	var err error
 	if m, err = icmp.ParseMessage(proto, recv.bytes); err != nil {
-		return fmt.Errorf("error parsing icmp message: %w", err)
+		return fmt.Errorf("%w: %s", errParseICMPMessage, err)
 	}
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
@@ -646,8 +659,8 @@ func (p *Pinger) processPacket(recv *packet) error {
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
-			return fmt.Errorf("insufficient data received; got: %d %v",
-				len(pkt.Data), pkt.Data)
+			return fmt.Errorf("%w: got: %d %v",
+				errInsufficientDataReceived, len(pkt.Data), pkt.Data)
 		}
 
 		pktUUID, err := p.getPacketUUID(pkt.Data)
@@ -671,7 +684,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
-		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
+		return fmt.Errorf("%w; type: '%T', '%v'", errInvalidICMPEchoReply, pkt, pkt)
 	}
 
 	handler := p.OnRecv
@@ -717,8 +730,10 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 
 	for {
 		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
-			if neterr, ok := err.(*net.OpError); ok {
-				if neterr.Err == syscall.ENOBUFS {
+			neterr := new(net.OpError)
+			ok := errors.As(err, &neterr)
+			if ok {
+				if errors.Is(neterr.Err, syscall.ENOBUFS) {
 					continue
 				}
 			}
@@ -738,7 +753,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
-		if p.sequence > 65535 {
+		if p.sequence > maxUint16 {
 			newUUID := uuid.New()
 			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
 			p.awaitingSequences[newUUID] = make(map[int]struct{})
@@ -750,25 +765,32 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 	return nil
 }
 
-func (p *Pinger) listen() (packetConn, error) {
-	var (
-		conn packetConn
-		err  error
-	)
+var (
+	errListenPacket = errors.New("failed listening for packet")
+)
 
+func (p *Pinger) listen() (conn packetConn, err error) {
 	if p.ipv4 {
 		var c icmpv4Conn
-		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
+		network := "udp4"
+		if p.protocol == icmpStr {
+			network = "ip4:icmp"
+		}
+		c.c, err = icmp.ListenPacket(network, p.Source)
 		conn = &c
 	} else {
 		var c icmpV6Conn
-		c.c, err = icmp.ListenPacket(ipv6Proto[p.protocol], p.Source)
+		network := "udp6"
+		if p.protocol == icmpStr {
+			network = "ip6:ipv6-icmp"
+		}
+		c.c, err = icmp.ListenPacket(network, p.Source)
 		conn = &c
 	}
 
 	if err != nil {
 		p.Stop()
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", errListenPacket, err)
 	}
 	return conn, nil
 }
@@ -776,9 +798,9 @@ func (p *Pinger) listen() (packetConn, error) {
 func bytesToTime(b []byte) time.Time {
 	var nsec int64
 	for i := uint8(0); i < 8; i++ {
-		nsec += int64(b[i]) << ((7 - i) * 8)
+		nsec += int64(b[i]) << ((7 - i) * 8) //nolint:gomnd
 	}
-	return time.Unix(nsec/1000000000, nsec%1000000000)
+	return time.Unix(nsec/int64(time.Second), nsec%int64(time.Second))
 }
 
 func isIPv4(ip net.IP) bool {
@@ -787,16 +809,25 @@ func isIPv4(ip net.IP) bool {
 
 func timeToBytes(t time.Time) []byte {
 	nsec := t.UnixNano()
-	b := make([]byte, 8)
+	const bufSize = 8
+	b := make([]byte, bufSize)
 	for i := uint8(0); i < 8; i++ {
-		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff)
+		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff) //nolint:gomnd
 	}
 	return b
 }
 
-var seed int64 = time.Now().UnixNano()
-
-// getSeed returns a goroutine-safe unique seed
-func getSeed() int64 {
-	return atomic.AddInt64(&seed, 1)
+// newSource returns a goroutine-safe and fast source.
+// See https://qqq.ninja/blog/post/fast-threadsafe-randomness-in-go/
+func newSource() *source {
+	return &source{}
 }
+
+type source struct{}
+
+func (s *source) Int63() int64 {
+	v := new(maphash.Hash).Sum64()
+	return int64(v >> 1)
+}
+
+func (s *source) Seed(_ int64) {}

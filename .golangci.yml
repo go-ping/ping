@@ -1,6 +1,79 @@
----
+linters-settings:
+  maligned:
+    suggest-new: true
+  misspell:
+    locale: US
+
 issues:
   exclude-rules:
-  - path: _test.go
-    linters:
+    - path: _test\.go
+      linters:
+        - dupl
+        - goerr113
+
+linters:
+  disable-all: true
+  enable:
+    - asciicheck
+    - bodyclose
+    # - cyclop - enable later
+    - deadcode
+    - dogsled
+    - dupl
+    - durationcheck
     - errcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forcetypeassert
+    - gci
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goerr113
+    - goheader
+    - goimports
+    - gomnd
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - importas
+    - importas
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nestif
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - predeclared
+    - promlinter
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - structcheck
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - wastedassign
+    - whitespace
+
+run:
+  skip-dirs:
+    - .circleci

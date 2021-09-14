@@ -476,7 +476,7 @@ func TestStatisticsLossy(t *testing.T) {
 	}
 }
 
-// Test helpers
+// Test helpers.
 func makeTestPinger() *Pinger {
 	pinger := New("127.0.0.1")
 
@@ -573,7 +573,7 @@ func BenchmarkProcessPacket(b *testing.B) {
 	}
 
 	for k := 0; k < b.N; k++ {
-		pinger.processPacket(&pkt)
+		_ = pinger.processPacket(&pkt)
 	}
 }
 

@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package ping
@@ -9,16 +10,14 @@ import (
 
 // Returns the length of an ICMP message, plus the IP packet header.
 func (p *Pinger) getMessageLength() int {
+	const extraSize = 8
 	if p.ipv4 {
-		return p.Size + 8 + ipv4.HeaderLen
+		return p.Size + extraSize + ipv4.HeaderLen
 	}
-	return p.Size + 8 + ipv6.HeaderLen
+	return p.Size + extraSize + ipv6.HeaderLen
 }
 
-// Attempts to match the ID of an ICMP packet.
-func (p *Pinger) matchID(ID int) bool {
-	if ID != p.id {
-		return false
-	}
-	return true
+// Attempts to match the id of an ICMP packet.
+func (p *Pinger) matchID(id int) bool {
+	return id == p.id
 }
