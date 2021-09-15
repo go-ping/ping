@@ -12,7 +12,6 @@ issues:
         - goerr113
 
 linters:
-  disable-all: true
   enable:
     - asciicheck
     - bodyclose
