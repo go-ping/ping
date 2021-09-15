@@ -783,7 +783,7 @@ func TestRunWithContext(t *testing.T) {
 		"canceled context": {
 			ctx: canceledCtx,
 			// to avoid race condition in the select block
-			count:    100,
+			count:    10,
 			interval: time.Second,
 			err:      context.Canceled,
 		},
