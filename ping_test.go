@@ -795,7 +795,6 @@ func TestRunWithContext(t *testing.T) {
 			t.Parallel()
 
 			pinger := New("127.0.0.1")
-			pinger.SetPrivileged(true)
 			pinger.Count = testCase.count
 
 			err := pinger.RunWithContext(testCase.ctx)
