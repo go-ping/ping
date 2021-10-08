@@ -17,14 +17,20 @@ type packetConn interface {
 	SetFlagTTL() error
 	SetReadDeadline(t time.Time) error
 	WriteTo(b []byte, dst net.Addr) (int, error)
+	SetTTL(ttl int)
 }
 
 type icmpConn struct {
-	c *icmp.PacketConn
+	c   *icmp.PacketConn
+	ttl int
 }
 
 func (c *icmpConn) Close() error {
 	return c.c.Close()
+}
+
+func (c *icmpConn) SetTTL(ttl int) {
+	c.ttl = ttl
 }
 
 func (c *icmpConn) SetReadDeadline(t time.Time) error {
@@ -32,6 +38,13 @@ func (c *icmpConn) SetReadDeadline(t time.Time) error {
 }
 
 func (c *icmpConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+	if c.c.IPv6PacketConn() != nil {
+		c.c.IPv6PacketConn().SetHopLimit(c.ttl)
+	}
+	if c.c.IPv4PacketConn() != nil {
+		c.c.IPv4PacketConn().SetTTL(c.ttl)
+	}
+
 	return c.c.WriteTo(b, dst)
 }
 
