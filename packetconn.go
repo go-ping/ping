@@ -39,10 +39,14 @@ func (c *icmpConn) SetReadDeadline(t time.Time) error {
 
 func (c *icmpConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	if c.c.IPv6PacketConn() != nil {
-		c.c.IPv6PacketConn().SetHopLimit(c.ttl)
+		if err := c.c.IPv6PacketConn().SetHopLimit(c.ttl); err != nil {
+			return 0, err
+		}
 	}
 	if c.c.IPv4PacketConn() != nil {
-		c.c.IPv4PacketConn().SetTTL(c.ttl)
+		if err := c.c.IPv4PacketConn().SetTTL(c.ttl); err != nil {
+			return 0, err
+		}
 	}
 
 	return c.c.WriteTo(b, dst)
