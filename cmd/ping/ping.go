@@ -41,6 +41,7 @@ func main() {
 	interval := flag.Duration("i", time.Second, "")
 	count := flag.Int("c", -1, "")
 	size := flag.Int("s", 24, "")
+	ttl := flag.Int("l", 64, "TTL")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -88,6 +89,7 @@ func main() {
 	pinger.Size = *size
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
+	pinger.TTL = *ttl
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())

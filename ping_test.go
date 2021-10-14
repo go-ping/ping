@@ -641,6 +641,7 @@ func (c testPacketConn) Close() error                      { return nil }
 func (c testPacketConn) ICMPRequestType() icmp.Type        { return ipv4.ICMPTypeEcho }
 func (c testPacketConn) SetFlagTTL() error                 { return nil }
 func (c testPacketConn) SetReadDeadline(t time.Time) error { return nil }
+func (c testPacketConn) SetTTL(t int)                      {}
 
 func (c testPacketConn) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err error) {
 	return 0, 0, nil, nil
