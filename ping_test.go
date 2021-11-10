@@ -15,12 +15,23 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+var (
+	testAddr = &net.IPAddr{
+		IP:   net.IPv4(192, 168, 0, 1),
+		Zone: "",
+	}
+)
+
 func TestProcessPacket(t *testing.T) {
 	pinger := makeTestPinger()
 	shouldBe1 := 0
 	// this function should be called
 	pinger.OnRecv = func(pkt *Packet) {
 		shouldBe1++
+
+		// make sure the received packets have the correct address.
+		AssertTrue(t, pkt.Addr == testAddr.String())
+		AssertTrue(t, pkt.IPAddr == testAddr)
 	}
 
 	currentUUID := pinger.getCurrentTrackerUUID()
@@ -52,6 +63,7 @@ func TestProcessPacket(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -94,6 +106,7 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -137,6 +150,7 @@ func TestProcessPacket_IDMismatch(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -179,6 +193,7 @@ func TestProcessPacket_TrackerMismatch(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -217,6 +232,7 @@ func TestProcessPacket_LargePacket(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -245,6 +261,7 @@ func TestProcessPacket_PacketTooSmall(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err := pinger.processPacket(&pkt)
@@ -570,6 +587,7 @@ func BenchmarkProcessPacket(b *testing.B) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	for k := 0; k < b.N; k++ {
@@ -622,6 +640,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		nbytes: len(msgBytes),
 		bytes:  msgBytes,
 		ttl:    24,
+		addr:   testAddr,
 	}
 
 	err = pinger.processPacket(&pkt)
@@ -738,7 +757,7 @@ func (c *testPacketConnOK) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err
 		return 0, 0, nil, err
 	}
 	time.Sleep(10 * time.Millisecond)
-	return copy(b, buf), 64, c.dst, nil
+	return copy(b, buf), 64, testAddr, nil
 }
 
 func TestRunOK(t *testing.T) {
