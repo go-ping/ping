@@ -761,5 +761,4 @@ func TestRunOK(t *testing.T) {
 	AssertTrue(t, stats.PacketsSent == 1)
 	AssertTrue(t, stats.PacketsRecv == 1)
 	AssertTrue(t, stats.MinRtt >= 10*time.Millisecond)
-	AssertTrue(t, stats.MinRtt <= 12*time.Millisecond)
 }
