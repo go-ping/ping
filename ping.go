@@ -749,6 +749,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 				IPAddr: p.ipaddr,
 				Addr:   p.addr,
 				Seq:    p.sequence,
+				ID:     p.id,
 			}
 			handler(outPkt)
 		}
