@@ -493,8 +493,10 @@ func (p *Pinger) runLoop(
 			}
 			err := p.sendICMP(conn)
 			if err != nil {
-				// FIXME: this logs as FATAL but continues
 				logger.Fatalf("sending packet: %s", err)
+				if p.Count > 0 && p.PacketsSent >= p.Count {
+					return nil
+				}
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
@@ -734,14 +736,17 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 	}
 
 	for {
-		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
+		_, err := conn.WriteTo(msgBytes, dst)
+		if err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
 					continue
 				}
 			}
+			p.PacketsSent++
 			return err
 		}
+
 		handler := p.OnSend
 		if handler != nil {
 			outPkt := &Packet{

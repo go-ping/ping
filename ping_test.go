@@ -676,8 +676,43 @@ func TestRunBadWrite(t *testing.T) {
 	if stats == nil {
 		t.FailNow()
 	}
-	AssertTrue(t, stats.PacketsSent == 0)
+	AssertTrue(t, stats.PacketsSent == 1)
 	AssertTrue(t, stats.PacketsRecv == 0)
+}
+
+var badWriteTryCount int
+
+type testPacketConnBadWriteOn2ndTry struct {
+	testPacketConn
+}
+
+func (c testPacketConnBadWriteOn2ndTry) WriteTo(b []byte, dst net.Addr) (int, error) {
+	badWriteTryCount++
+	if badWriteTryCount > 1 {
+		return 0, errors.New("bad write")
+	}
+	return len(b), nil
+}
+
+func TestRunBadWriteOn2ndTry(t *testing.T) {
+	pinger := New("127.0.0.1")
+	pinger.Count = 2
+
+	err := pinger.Resolve()
+	AssertNoError(t, err)
+
+	conn := &testPacketConnBadWriteOn2ndTry{}
+
+	err = pinger.run(conn)
+	AssertTrue(t, err == nil)
+
+	stats := pinger.Statistics()
+	AssertTrue(t, stats != nil)
+	if stats == nil {
+		t.FailNow()
+	}
+
+	// NOTE: The goal of this test is to check that it does not time out as we are testing #195 which results in an endless loop
 }
 
 type testPacketConnBadRead struct {
