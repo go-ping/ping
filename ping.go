@@ -348,6 +348,7 @@ func (p *Pinger) Resolve() error {
 func (p *Pinger) SetAddr(addr string) error {
 	oldAddr := p.addr
 	p.addr = addr
+	p.Reset()
 	err := p.Resolve()
 	if err != nil {
 		p.addr = oldAddr
