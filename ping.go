@@ -311,6 +311,8 @@ func (p *Pinger) Reset() {
 	p.rtts = make([]time.Duration, 0)
 	p.PacketsSent = 0
 	p.PacketsRecv = 0
+	p.minRtt = 0
+	p.maxRtt = 0
 }
 
 // SetIPAddr sets the ip address of the target host.
