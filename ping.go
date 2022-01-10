@@ -303,6 +303,16 @@ func (p *Pinger) updateStatistics(pkt *Packet) {
 	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
 }
 
+// Reset sets the RTTs and the sent and received counts
+// back to zero so that Run can be re-used on the same
+// instance.
+func (p *Pinger) Reset() {
+	p.done = make(chan interface {})
+	p.rtts = make([]time.Duration, 0)
+	p.PacketsSent = 0
+	p.PacketsRecv = 0
+}
+
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
 	p.ipv4 = isIPv4(ipaddr.IP)
