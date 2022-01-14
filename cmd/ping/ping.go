@@ -80,7 +80,7 @@ func main() {
 	pinger.OnFinish = func(stats *ping.Statistics) {
 		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
 		fmt.Printf("%d packets transmitted, %d packets received, %d duplicates, %v%% packet loss\n",
-			stats.PacketsSent, stats.PacketsRecv, stats.PacketsRecvDuplicates, stats.PacketLoss)
+			stats.CountExecuted, stats.PacketsRecv, stats.PacketsRecvDuplicates, stats.PacketLoss)
 		fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
 			stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
 	}

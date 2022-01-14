@@ -676,7 +676,8 @@ func TestRunBadWrite(t *testing.T) {
 	if stats == nil {
 		t.FailNow()
 	}
-	AssertTrue(t, stats.PacketsSent == 1)
+	AssertTrue(t, stats.CountExecuted == 1)
+	AssertTrue(t, stats.PacketsSent == 0)
 	AssertTrue(t, stats.PacketsRecv == 0)
 }
 
@@ -740,6 +741,7 @@ func TestRunBadRead(t *testing.T) {
 	if stats == nil {
 		t.FailNow()
 	}
+	AssertTrue(t, stats.CountExecuted == 1)
 	AssertTrue(t, stats.PacketsSent == 1)
 	AssertTrue(t, stats.PacketsRecv == 0)
 }
@@ -793,6 +795,7 @@ func TestRunOK(t *testing.T) {
 	if stats == nil {
 		t.FailNow()
 	}
+	AssertTrue(t, stats.CountExecuted == 1)
 	AssertTrue(t, stats.PacketsSent == 1)
 	AssertTrue(t, stats.PacketsRecv == 1)
 	AssertTrue(t, stats.MinRtt >= 10*time.Millisecond)

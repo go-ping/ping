@@ -34,7 +34,7 @@
 //	pinger.OnFinish = func(stats *ping.Statistics) {
 //		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
 //		fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
-//			stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss)
+//			stats.CountExecuted, stats.PacketsRecv, stats.PacketLoss)
 //		fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
 //			stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
 //	}
@@ -134,7 +134,10 @@ type Pinger struct {
 	// Debug runs in debug mode
 	Debug bool
 
-	// Number of packets sent
+	// CountExecuted is the number of ping executions that were started. If PacketsRecv == CountExecuted all pings were successful.
+	CountExecuted int
+
+	// Number of packets sent; is < CountExecuted in case errors happened during send procedure
 	PacketsSent int
 
 	// Number of packets received
@@ -243,7 +246,10 @@ type Statistics struct {
 	// PacketsRecv is the number of packets received.
 	PacketsRecv int
 
-	// PacketsSent is the number of packets sent.
+	// CountExecuted is the number of ping executions that were started. If PacketsRecv == CountExecuted all pings were successful.
+	CountExecuted int
+
+	// PacketsSent is the number of packets sent. It is < CountExecuted in case errors happened during send procedure
 	PacketsSent int
 
 	// PacketsRecvDuplicates is the number of duplicate responses there were to a sent packet.
@@ -487,14 +493,14 @@ func (p *Pinger) runLoop(
 			}
 
 		case <-interval.C:
-			if p.Count > 0 && p.PacketsSent >= p.Count {
+			if p.Count > 0 && p.CountExecuted >= p.Count {
 				interval.Stop()
 				continue
 			}
 			err := p.sendICMP(conn)
 			if err != nil {
 				logger.Fatalf("sending packet: %s", err)
-				if p.Count > 0 && p.PacketsSent >= p.Count {
+				if p.Count > 0 && p.CountExecuted >= p.Count {
 					return nil
 				}
 			}
@@ -537,6 +543,7 @@ func (p *Pinger) Statistics() *Statistics {
 	sent := p.PacketsSent
 	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
 	s := Statistics{
+		CountExecuted:         p.CountExecuted,
 		PacketsSent:           sent,
 		PacketsRecv:           p.PacketsRecv,
 		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
@@ -736,16 +743,16 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 	}
 
 	for {
-		_, err := conn.WriteTo(msgBytes, dst)
-		if err != nil {
+		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
 					continue
 				}
 			}
-			p.PacketsSent++
+			p.CountExecuted++
 			return err
 		}
+		p.CountExecuted++
 
 		handler := p.OnSend
 		if handler != nil {
