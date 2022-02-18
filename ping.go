@@ -108,7 +108,7 @@ func New(addr string) *Pinger {
 		ipv4:            false,
 		network:         "ip",
 		protocol:        "udp",
-		InFlightPackets: firstSequence,
+		inFlightPackets: firstSequence,
 		TTL:             64,
 		logger:          StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
@@ -206,7 +206,7 @@ type Pinger struct {
 	id       int
 	sequence int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	InFlightPackets map[uuid.UUID]map[int]InFlightPacket
+	inFlightPackets map[uuid.UUID]map[int]InFlightPacket
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -526,10 +526,10 @@ func (p *Pinger) CheckInFlightPackets() {
 		return
 	}
 	currentTime := time.Now()
-	for id, inflight := range p.InFlightPackets {
+	for id, inflight := range p.inFlightPackets {
 		for seq, pkt := range inflight {
 			if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
-				delete(p.InFlightPackets[id], seq)
+				delete(p.inFlightPackets[id], seq)
 				if p.OnTimeout != nil {
 					p.OnTimeout(seq, &pkt)
 				}
@@ -712,7 +712,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
-		if _, inflight := p.InFlightPackets[*pktUUID][pkt.Seq]; !inflight {
+		if _, inflight := p.inFlightPackets[*pktUUID][pkt.Seq]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
@@ -720,7 +720,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return nil
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.InFlightPackets[*pktUUID], pkt.Seq)
+		delete(p.inFlightPackets[*pktUUID], pkt.Seq)
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
@@ -789,7 +789,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.InFlightPackets[currentUUID][p.sequence] = InFlightPacket{
+		p.inFlightPackets[currentUUID][p.sequence] = InFlightPacket{
 			DispatchedTime: time.Now(),
 		}
 		p.PacketsSent++
@@ -797,7 +797,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		if p.sequence > 65535 {
 			newUUID := uuid.New()
 			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-			p.InFlightPackets[newUUID] = make(map[int]InFlightPacket)
+			p.inFlightPackets[newUUID] = make(map[int]InFlightPacket)
 			p.sequence = 0
 		}
 		break
