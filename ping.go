@@ -92,12 +92,13 @@ func New(addr string) *Pinger {
 	var firstSequence = map[uuid.UUID]map[int]InFlightPacket{}
 	firstSequence[firstUUID] = make(map[int]InFlightPacket)
 	return &Pinger{
-		Count:      -1,
-		Interval:   time.Second,
-		RecordRtts: true,
-		Size:       timeSliceLength + trackerLength,
-		Timeout:    time.Duration(math.MaxInt64),
-		Tracker:    r.Uint64(),
+		Count:         -1,
+		Interval:      time.Second,
+		RecordRtts:    true,
+		Size:          timeSliceLength + trackerLength,
+		Timeout:       time.Duration(math.MaxInt64),
+		PacketTimeout: time.Duration(math.MaxInt64),
+		Tracker:       r.Uint64(),
 
 		addr:            addr,
 		done:            make(chan interface{}),
@@ -127,6 +128,10 @@ type Pinger struct {
 	// Timeout specifies a timeout before ping exits, regardless of how many
 	// packets have been received.
 	Timeout time.Duration
+
+	// PacketTimeout specifies a timeout before the OnTimeout function is called
+	// for a packet not being received
+	PacketTimeout time.Duration
 
 	// Count tells pinger to stop after sending (and receiving) Count echo
 	// packets. If this option is not specified, pinger will operate until
@@ -517,13 +522,13 @@ func (p *Pinger) runLoop(
 
 func (p *Pinger) CheckInFlightPackets() {
 	// Loop through each item in map
-	if time.Duration(p.TTL) == maxPacketTimeout {
+	if p.PacketTimeout == maxPacketTimeout {
 		return
 	}
 	currentTime := time.Now()
 	for id, inflight := range p.InFlightPackets {
 		for seq, pkt := range inflight {
-			if pkt.DispatchedTime.Add(time.Duration(p.TTL)).Before(currentTime) {
+			if pkt.DispatchedTime.Add(p.PacketTimeout).Before(currentTime) {
 				delete(p.InFlightPackets[id], seq)
 				if p.OnTimeout != nil {
 					p.OnTimeout(seq, &pkt)

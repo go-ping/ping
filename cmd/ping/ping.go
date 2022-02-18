@@ -92,6 +92,7 @@ func main() {
 	pinger.Size = *size
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
+	pinger.PacketTimeout = time.Second * 10
 	pinger.TTL = *ttl
 	pinger.SetPrivileged(*privileged)
 
