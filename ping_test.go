@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"runtime/debug"
 	"sync/atomic"
 	"testing"
@@ -385,6 +386,27 @@ func TestSetIPAddr(t *testing.T) {
 	AssertEqualStrings(t, googleaddr.String(), p.Addr())
 }
 
+func TestBindToDevice(t *testing.T) {
+	// Create a localhost ipv4 pinger
+	pinger := New("127.0.0.1")
+	pinger.ipv4 = true
+	pinger.Count = 1
+
+	// Set loopback interface: "lo"
+	pinger.Iface = "lo"
+	err := pinger.Run()
+	if runtime.GOOS == "linux" {
+		AssertNoError(t, err)
+	} else {
+		AssertError(t, err, "other platforms unsupported this feature")
+	}
+
+	// Set fake interface: "L()0pB@cK"
+	pinger.Iface = "L()0pB@cK"
+	err = pinger.Run()
+	AssertError(t, err, "device not found")
+}
+
 func TestEmptyIPAddr(t *testing.T) {
 	_, err := NewPinger("")
 	AssertError(t, err, "empty pinger did not return an error")
@@ -642,6 +664,7 @@ func (c testPacketConn) ICMPRequestType() icmp.Type        { return ipv4.ICMPTyp
 func (c testPacketConn) SetFlagTTL() error                 { return nil }
 func (c testPacketConn) SetReadDeadline(t time.Time) error { return nil }
 func (c testPacketConn) SetTTL(t int)                      {}
+func (c testPacketConn) BindToDevice(iface string) error   { return nil }
 
 func (c testPacketConn) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err error) {
 	return 0, 0, nil, nil

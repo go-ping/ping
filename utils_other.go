@@ -1,4 +1,4 @@
-// +build !linux,!windows
+//go:build !linux && !windows
 
 package ping
 
@@ -13,4 +13,8 @@ func (p *Pinger) matchID(ID int) bool {
 		return false
 	}
 	return true
+}
+
+func (c *icmpConn) BindToDevice(ifName string) error {
+	return errors.New("bind to interface unsupported")
 }

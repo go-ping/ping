@@ -13,7 +13,7 @@ import (
 var usage = `
 Usage:
 
-    ping [-c count] [-i interval] [-t timeout] [--privileged] host
+    ping [-c count] [-i interval] [-t timeout] [-I iface] [--privileged] host
 
 Examples:
 
@@ -37,11 +37,12 @@ Examples:
 `
 
 func main() {
-	timeout := flag.Duration("t", time.Second*100000, "")
-	interval := flag.Duration("i", time.Second, "")
-	count := flag.Int("c", -1, "")
-	size := flag.Int("s", 24, "")
-	ttl := flag.Int("l", 64, "TTL")
+	timeout := flag.Duration("t", time.Second*100000, "time to wait for response")
+	interval := flag.Duration("i", time.Second, "interval between sending each packet")
+	count := flag.Int("c", -1, "stop after replies")
+	size := flag.Int("s", 24, "number of data bytes to be sent")
+	ttl := flag.Int("l", 64, "define time to live")
+	iface := flag.String("I", "", "interface name")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -90,6 +91,7 @@ func main() {
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
 	pinger.TTL = *ttl
+	pinger.Iface = *iface
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
