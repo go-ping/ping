@@ -1,11 +1,8 @@
 package ping
 
 import (
-	"errors"
 	"net"
-	"reflect"
 	"runtime"
-	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -39,38 +36,6 @@ func (c *icmpConn) SetTTL(ttl int) {
 
 func (c *icmpConn) SetReadDeadline(t time.Time) error {
 	return c.c.SetReadDeadline(t)
-}
-
-func getConnFD(conn *icmp.PacketConn) (fd int) {
-	var packetConn reflect.Value
-
-	defer func() {
-		if r := recover(); r != nil {
-			fd = -1
-		}
-	}()
-
-	if conn.IPv4PacketConn() != nil {
-		packetConn = reflect.ValueOf(conn.IPv4PacketConn().PacketConn)
-	} else if conn.IPv6PacketConn() != nil {
-		packetConn = reflect.ValueOf(conn.IPv6PacketConn().PacketConn)
-	} else {
-		return -1
-	}
-
-	netFD := reflect.Indirect(reflect.Indirect(packetConn).FieldByName("fd"))
-	pollFD := netFD.FieldByName("pfd")
-	systemFD := pollFD.FieldByName("Sysfd")
-	return int(systemFD.Int())
-}
-
-func (c *icmpConn) BindToDevice(ifName string) error {
-	if runtime.GOOS == "linux" {
-		if fd := getConnFD(c.c); fd >= 0 {
-			return syscall.BindToDevice(fd, ifName)
-		}
-	}
-	return errors.New("bind to interface unsupported") // FIXME: or nil
 }
 
 func (c *icmpConn) WriteTo(b []byte, dst net.Addr) (int, error) {

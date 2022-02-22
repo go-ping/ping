@@ -1,6 +1,8 @@
-//go:build !linux && !windows
+// +build !linux,!windows
 
 package ping
+
+import "errors"
 
 // Returns the length of an ICMP message.
 func (p *Pinger) getMessageLength() int {
