@@ -24,7 +24,7 @@ style:
 .PHONY: test
 test:
 	@echo ">> running all tests"
-	GO111MODULE=$(GO111MODULE) $(GO) test -race -cover $(GOOPTS) $(pkgs)
+	GO111MODULE=$(GO111MODULE) $(GO) test -race -cover -short $(GOOPTS) $(pkgs)
 
 .PHONY: vet
 vet:

@@ -387,21 +387,26 @@ func TestSetIPAddr(t *testing.T) {
 }
 
 func TestBindToDevice(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
 	// Create a localhost ipv4 pinger
 	pinger := New("127.0.0.1")
 	pinger.ipv4 = true
 	pinger.Count = 1
 
-	// Set loopback interface: "lo"
+	// Set loopback interface
 	pinger.Iface = "lo"
 	err := pinger.Run()
 	if runtime.GOOS == "linux" {
 		AssertNoError(t, err)
 	} else {
-		AssertError(t, err, "other platforms unsupported this feature")
+		AssertError(t, err, "other platforms unsupport this feature")
 	}
 
-	// Set fake interface: "L()0pB@cK"
+	// Set fake interface
 	pinger.Iface = "L()0pB@cK"
 	err = pinger.Run()
 	AssertError(t, err, "device not found")
