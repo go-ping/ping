@@ -23,8 +23,7 @@ func TestProcessPacket(t *testing.T) {
 		shouldBe1++
 	}
 
-	currentUUID := pinger.getCurrentTrackerUUID()
-	uuidEncoded, err := currentUUID.MarshalBinary()
+	uuidEncoded, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -38,7 +37,7 @@ func TestProcessPacket(t *testing.T) {
 		Seq:  pinger.sequence,
 		Data: data,
 	}
-	pinger.awaitingSequences[currentUUID][pinger.sequence] = struct{}{}
+	pinger.awaitingSequences[buildLookupKey(pinger.currentUUID, pinger.sequence)] = struct{}{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -67,7 +66,7 @@ func TestProcessPacket_IgnoreNonEchoReplies(t *testing.T) {
 		shouldBe0++
 	}
 
-	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	currentUUID, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -110,7 +109,7 @@ func TestProcessPacket_IDMismatch(t *testing.T) {
 		shouldBe0++
 	}
 
-	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	currentUUID, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -190,7 +189,7 @@ func TestProcessPacket_LargePacket(t *testing.T) {
 	pinger := makeTestPinger()
 	pinger.Size = 4096
 
-	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	currentUUID, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -543,7 +542,7 @@ func BenchmarkProcessPacket(b *testing.B) {
 	pinger.protocol = "ip4:icmp"
 	pinger.id = 123
 
-	currentUUID, err := pinger.getCurrentTrackerUUID().MarshalBinary()
+	currentUUID, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		b.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -573,7 +572,7 @@ func BenchmarkProcessPacket(b *testing.B) {
 	}
 
 	for k := 0; k < b.N; k++ {
-		pinger.processPacket(&pkt)
+		_ = pinger.processPacket(&pkt)
 	}
 }
 
@@ -592,8 +591,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		dups++
 	}
 
-	currentUUID := pinger.getCurrentTrackerUUID()
-	uuidEncoded, err := currentUUID.MarshalBinary()
+	uuidEncoded, err := pinger.currentUUID.MarshalBinary()
 	if err != nil {
 		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
 	}
@@ -608,7 +606,7 @@ func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 		Data: data,
 	}
 	// register the sequence as sent
-	pinger.awaitingSequences[currentUUID][0] = struct{}{}
+	pinger.awaitingSequences[buildLookupKey(pinger.currentUUID, 0)] = struct{}{}
 
 	msg := &icmp.Message{
 		Type: ipv4.ICMPTypeEchoReply,
@@ -640,14 +638,14 @@ type testPacketConn struct{}
 func (c testPacketConn) Close() error                      { return nil }
 func (c testPacketConn) ICMPRequestType() icmp.Type        { return ipv4.ICMPTypeEcho }
 func (c testPacketConn) SetFlagTTL() error                 { return nil }
-func (c testPacketConn) SetReadDeadline(t time.Time) error { return nil }
-func (c testPacketConn) SetTTL(t int)                      {}
+func (c testPacketConn) SetReadDeadline(_ time.Time) error { return nil }
+func (c testPacketConn) SetTTL(_ int)                      {}
 
-func (c testPacketConn) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err error) {
+func (c testPacketConn) ReadFrom(_ []byte) (n int, ttl int, src net.Addr, err error) {
 	return 0, 0, nil, nil
 }
 
-func (c testPacketConn) WriteTo(b []byte, dst net.Addr) (int, error) {
+func (c testPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 	return len(b), nil
 }
 
@@ -655,7 +653,7 @@ type testPacketConnBadWrite struct {
 	testPacketConn
 }
 
-func (c testPacketConnBadWrite) WriteTo(b []byte, dst net.Addr) (int, error) {
+func (c testPacketConnBadWrite) WriteTo(_ []byte, _ net.Addr) (int, error) {
 	return 0, errors.New("bad write")
 }
 
@@ -684,7 +682,7 @@ type testPacketConnBadRead struct {
 	testPacketConn
 }
 
-func (c testPacketConnBadRead) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err error) {
+func (c testPacketConnBadRead) ReadFrom(_ []byte) (n int, ttl int, src net.Addr, err error) {
 	return 0, 0, nil, errors.New("bad read")
 }
 

@@ -60,6 +60,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -87,25 +88,22 @@ var (
 // New returns a new Pinger struct pointer.
 func New(addr string) *Pinger {
 	r := rand.New(rand.NewSource(getSeed()))
-	firstUUID := uuid.New()
-	var firstSequence = map[uuid.UUID]map[int]struct{}{}
-	firstSequence[firstUUID] = make(map[int]struct{})
-	return &Pinger{
-		Count:      -1,
-		Interval:   time.Second,
-		RecordRtts: true,
-		Size:       timeSliceLength + trackerLength,
-		Timeout:    time.Duration(math.MaxInt64),
 
+	return &Pinger{
+		Count:             -1,
+		Interval:          time.Second,
+		RecordRtts:        true,
+		Size:              timeSliceLength + trackerLength,
+		Timeout:           time.Duration(math.MaxInt64),
 		addr:              addr,
 		done:              make(chan interface{}),
 		id:                r.Intn(math.MaxUint16),
-		trackerUUIDs:      []uuid.UUID{firstUUID},
+		currentUUID:       uuid.New(),
 		ipaddr:            nil,
 		ipv4:              false,
 		network:           "ip",
 		protocol:          "udp",
-		awaitingSequences: firstSequence,
+		awaitingSequences: make(map[string]struct{}),
 		TTL:               64,
 		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
@@ -189,14 +187,14 @@ type Pinger struct {
 	ipaddr *net.IPAddr
 	addr   string
 
-	// trackerUUIDs is the list of UUIDs being used for sending packets.
-	trackerUUIDs []uuid.UUID
+	// currentUUID is the current UUID used to build unique and recognizable packet payloads
+	currentUUID uuid.UUID
 
 	ipv4     bool
 	id       int
 	sequence int
 	// awaitingSequences are in-flight sequence numbers we keep track of to help remove duplicate receipts
-	awaitingSequences map[uuid.UUID]map[int]struct{}
+	awaitingSequences map[string]struct{}
 	// network is one of "ip", "ip4", or "ip6".
 	network string
 	// protocol is "icmp" or "udp".
@@ -607,27 +605,6 @@ func (p *Pinger) recvICMP(
 	}
 }
 
-// getPacketUUID scans the tracking slice for matches.
-func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
-	var packetUUID uuid.UUID
-	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
-	if err != nil {
-		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
-	}
-
-	for _, item := range p.trackerUUIDs {
-		if item == packetUUID {
-			return &packetUUID, nil
-		}
-	}
-	return nil, nil
-}
-
-// getCurrentTrackerUUID grabs the latest tracker UUID.
-func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
-	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
-}
-
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
 	var proto int
@@ -667,24 +644,29 @@ func (p *Pinger) processPacket(recv *packet) error {
 				len(pkt.Data), pkt.Data)
 		}
 
-		pktUUID, err := p.getPacketUUID(pkt.Data)
-		if err != nil || pktUUID == nil {
-			return err
+		var pktUUID uuid.UUID
+		err = pktUUID.UnmarshalBinary(pkt.Data[timeSliceLength : timeSliceLength+trackerLength])
+		if err != nil {
+			return fmt.Errorf("error decoding tracking UUID: %w", err)
 		}
 
 		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
 		inPkt.Rtt = receivedAt.Sub(timestamp)
 		inPkt.Seq = pkt.Seq
+
+		key := buildLookupKey(pktUUID, pkt.Seq)
+
 		// If we've already received this sequence, ignore it.
-		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
+		if _, inflight := p.awaitingSequences[key]; !inflight {
 			p.PacketsRecvDuplicates++
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
 			}
 			return nil
 		}
-		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.awaitingSequences[*pktUUID], pkt.Seq)
+
+		// remove it from the list of sequences we're waiting for, so we don't get duplicates.
+		delete(p.awaitingSequences, key)
 		p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
@@ -705,8 +687,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
 
-	currentUUID := p.getCurrentTrackerUUID()
-	uuidEncoded, err := currentUUID.MarshalBinary()
+	uuidEncoded, err := p.currentUUID.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("unable to marshal UUID binary: %w", err)
 	}
@@ -753,13 +734,11 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			handler(outPkt)
 		}
 		// mark this sequence as in-flight
-		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
+		p.awaitingSequences[buildLookupKey(p.currentUUID, p.sequence)] = struct{}{}
 		p.PacketsSent++
 		p.sequence++
 		if p.sequence > 65535 {
-			newUUID := uuid.New()
-			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-			p.awaitingSequences[newUUID] = make(map[int]struct{})
+			p.currentUUID = uuid.New()
 			p.sequence = 0
 		}
 		break
@@ -817,4 +796,9 @@ var seed int64 = time.Now().UnixNano()
 // getSeed returns a goroutine-safe unique seed
 func getSeed() int64 {
 	return atomic.AddInt64(&seed, 1)
+}
+
+// buildLookupKey builds the key required for lookups on awaitingSequences map
+func buildLookupKey(id uuid.UUID, sequenceId int) string {
+	return string(id[:]) + strconv.Itoa(sequenceId)
 }
