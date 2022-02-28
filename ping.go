@@ -96,7 +96,7 @@ func New(addr string) *Pinger {
 		Size:              timeSliceLength + trackerLength,
 		Timeout:           time.Duration(math.MaxInt64),
 		addr:              addr,
-		done:              make(chan interface{}),
+		done:              make(chan struct{}),
 		id:                r.Intn(math.MaxUint16),
 		currentUUID:       uuid.New(),
 		ipaddr:            nil,
@@ -190,7 +190,7 @@ type Pinger struct {
 	Source string
 
 	// Channel and mutex used to communicate when the Pinger should stop between goroutines.
-	done chan interface{}
+	done chan struct{}
 	lock sync.Mutex
 
 	ipaddr *net.IPAddr
@@ -549,13 +549,10 @@ func (p *Pinger) Stop() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	open := true
 	select {
-	case _, open = <-p.done:
+	case <-p.done:
+		return
 	default:
-	}
-
-	if open {
 		close(p.done)
 	}
 }
