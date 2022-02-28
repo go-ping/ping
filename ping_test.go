@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -492,46 +491,43 @@ func makeTestPinger() *Pinger {
 func AssertNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
-		t.Errorf("Expected No Error but got %s, Stack:\n%s",
-			err, string(debug.Stack()))
+		t.Errorf("Expected No Error but got %q", err)
 	}
 }
 
 func AssertError(t *testing.T, err error, info string) {
 	t.Helper()
 	if err == nil {
-		t.Errorf("Expected Error but got %s, %s, Stack:\n%s",
-			err, info, string(debug.Stack()))
+		t.Errorf("Expected Error %q but got %q",
+			err, info)
 	}
 }
 
 func AssertEqualStrings(t *testing.T, expected, actual string) {
 	t.Helper()
 	if expected != actual {
-		t.Errorf("Expected %s, got %s, Stack:\n%s",
-			expected, actual, string(debug.Stack()))
+		t.Errorf("Expected %s, got %s", expected, actual)
 	}
 }
 
 func AssertNotEqualStrings(t *testing.T, expected, actual string) {
 	t.Helper()
 	if expected == actual {
-		t.Errorf("Expected %s, got %s, Stack:\n%s",
-			expected, actual, string(debug.Stack()))
+		t.Errorf("Expected %q, got %q", expected, actual)
 	}
 }
 
 func AssertTrue(t *testing.T, b bool) {
 	t.Helper()
 	if !b {
-		t.Errorf("Expected True, got False, Stack:\n%s", string(debug.Stack()))
+		t.Errorf("Expected True, got False")
 	}
 }
 
 func AssertFalse(t *testing.T, b bool) {
 	t.Helper()
 	if b {
-		t.Errorf("Expected False, got True, Stack:\n%s", string(debug.Stack()))
+		t.Errorf("Expected False, got True")
 	}
 }
 
