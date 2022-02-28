@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/go-ping/ping"
 )
 
@@ -77,10 +79,13 @@ func main() {
 		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v (DUP!)\n",
 			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
 	}
+	pinger.OnLost = func(_ uuid.UUID, sequenceID int, noResponseAfter time.Duration) {
+		fmt.Printf("Request with sequence ID %d timed out, still no response after %d ms\n", sequenceID, noResponseAfter.Milliseconds())
+	}
 	pinger.OnFinish = func(stats *ping.Statistics) {
 		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
-		fmt.Printf("%d packets transmitted, %d packets received, %d duplicates, %v%% packet loss\n",
-			stats.PacketsSent, stats.PacketsRecv, stats.PacketsRecvDuplicates, stats.PacketLoss)
+		fmt.Printf("%d packets transmitted, %d packets received, %d duplicates, %d packets assumed lost, %d packets still awaited, %v%% packet loss\n",
+			stats.PacketsSent, stats.PacketsRecv, stats.PacketsRecvDuplicates, stats.PacketsLost, stats.PacketsSent-stats.PacketsLost-stats.PacketsRecv, stats.PacketLoss)
 		fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
 			stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
 	}
