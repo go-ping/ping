@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -483,7 +484,7 @@ func makeTestPinger() *Pinger {
 	pinger.addr = "127.0.0.1"
 	pinger.protocol = "icmp"
 	pinger.id = 123
-	pinger.Size = 0
+	pinger.Size = timeSliceLength + trackerLength
 
 	return pinger
 }
@@ -579,58 +580,73 @@ func BenchmarkProcessPacket(b *testing.B) {
 func TestProcessPacket_IgnoresDuplicateSequence(t *testing.T) {
 	pinger := makeTestPinger()
 	// pinger.protocol = "icmp" // ID is only checked on "icmp" protocol
-	shouldBe0 := 0
-	dups := 0
+	var received, dups, lost int
 
-	// this function should not be called because the tracker is mismatched
 	pinger.OnRecv = func(pkt *Packet) {
-		shouldBe0++
+		received++
 	}
 
 	pinger.OnDuplicateRecv = func(pkt *Packet) {
 		dups++
 	}
 
-	uuidEncoded, err := pinger.currentUUID.MarshalBinary()
-	if err != nil {
-		t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
-	}
-	data := append(timeToBytes(time.Now()), uuidEncoded...)
-	if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
-		data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
+	pinger.OnLost = func(_ uuid.UUID, _ int, noResponseAfter time.Duration) {
+		lost++
 	}
 
-	body := &icmp.Echo{
-		ID:   123,
-		Seq:  0,
-		Data: data,
+	buildPacket := func(ts time.Time) *packet {
+		uuidEncoded, err := pinger.currentUUID.MarshalBinary()
+		if err != nil {
+			t.Fatal(fmt.Sprintf("unable to marshal UUID binary: %s", err))
+		}
+
+		data := append(timeToBytes(ts), uuidEncoded...)
+		if remainSize := pinger.Size - timeSliceLength - trackerLength; remainSize > 0 {
+			data = append(data, bytes.Repeat([]byte{1}, remainSize)...)
+		}
+
+		body := &icmp.Echo{
+			ID:   123,
+			Seq:  0,
+			Data: data,
+		}
+		// register the sequence as sent
+		pinger.awaitingSequences[buildLookupKey(pinger.currentUUID, 0)] = ts
+
+		msg := &icmp.Message{
+			Type: ipv4.ICMPTypeEchoReply,
+			Code: 0,
+			Body: body,
+		}
+
+		msgBytes, _ := msg.Marshal(nil)
+
+		return &packet{
+			nbytes: len(msgBytes),
+			bytes:  msgBytes,
+			ttl:    24,
+		}
 	}
-	// register the sequence as sent
-	pinger.awaitingSequences[buildLookupKey(pinger.currentUUID, 0)] = time.Now()
 
-	msg := &icmp.Message{
-		Type: ipv4.ICMPTypeEchoReply,
-		Code: 0,
-		Body: body,
-	}
+	pktInTime := buildPacket(time.Now())
+	pktDelayed := buildPacket(time.Now().Add(-pinger.PacketTimeout))
 
-	msgBytes, _ := msg.Marshal(nil)
-
-	pkt := packet{
-		nbytes: len(msgBytes),
-		bytes:  msgBytes,
-		ttl:    24,
-	}
-
-	err = pinger.processPacket(&pkt)
-	AssertNoError(t, err)
+	AssertNoError(t, pinger.processPacket(pktInTime))
 	// receive a duplicate
-	err = pinger.processPacket(&pkt)
-	AssertNoError(t, err)
+	AssertNoError(t, pinger.processPacket(pktInTime))
+	// simulate receiving another package with the same UUID and seq, so basically another duplicate - but as we make it
+	// look like as it has been in transfer for the duration of pinger.PacketTimeout, it should not be considered a
+	// duplicate but rather a packet that has already been declared lost. Therefore, the lost counter will NOT be
+	// increased, as otherwise lost packages would be counted twice in case they actually do arrive but just after their
+	// timeout.
+	AssertNoError(t, pinger.processPacket(pktDelayed))
 
-	AssertTrue(t, shouldBe0 == 1)
+	AssertTrue(t, received == 1)
+	AssertTrue(t, pinger.PacketsRecv == 1)
 	AssertTrue(t, dups == 1)
 	AssertTrue(t, pinger.PacketsRecvDuplicates == 1)
+	AssertTrue(t, lost == 0)
+	AssertTrue(t, pinger.PacketsLost == 0)
 }
 
 type testPacketConn struct{}
@@ -760,4 +776,41 @@ func TestRunOK(t *testing.T) {
 	AssertTrue(t, stats.PacketsRecv == 1)
 	AssertTrue(t, stats.MinRtt >= 10*time.Millisecond)
 	AssertTrue(t, stats.MinRtt <= 12*time.Millisecond)
+}
+
+func TestPinger_LostPackets(t *testing.T) {
+	// We configure the pinger to send to packets, that will obviously not being answered because they are black-holed.
+	// When then wait for them to be declared lost.
+	pinger := makeTestPinger()
+
+	pinger.Interval = 10 * time.Millisecond
+	pinger.Count = 2
+	pinger.PacketTimeout = 1 * time.Millisecond
+
+	lostPacketsWg := sync.WaitGroup{}
+	lostPacketsWg.Add(2)
+
+	pinger.OnLost = func(usedUUID uuid.UUID, sequenceID int, noResponseAfter time.Duration) {
+		AssertTrue(t, usedUUID == pinger.currentUUID)
+		// Order of the lost packets should be ensured by having set pinger.Interval higher than pinger.PacketTimeout;
+		// iterating over the map of outstanding responses in the checkForLostPackets() should therefore not be an issue
+		// as always just one packet should be waiting for a response.
+		AssertTrue(t, sequenceID == pinger.sequence-1)
+		AssertTrue(t, noResponseAfter > 1*time.Millisecond)
+
+		lostPacketsWg.Done()
+	}
+
+	AssertNoError(t, pinger.run(testPacketConn{}))
+
+	lostPacketsWg.Wait()
+
+	AssertTrue(t, pinger.PacketsSent == 2)
+	AssertTrue(t, pinger.PacketsLost == 2)
+	AssertTrue(t, pinger.PacketsRecv == 0)
+
+	stats := pinger.Statistics()
+
+	AssertTrue(t, stats.PacketsLost == 2)
+	AssertTrue(t, stats.PacketLoss == 100)
 }
