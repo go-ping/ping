@@ -580,7 +580,8 @@ func (p *Pinger) recvICMP(
 		case <-p.done:
 			return nil
 		default:
-			bytes := make([]byte, p.getMessageLength())
+			expectedSize := p.getMessageLength()
+			bytes := make([]byte, expectedSize)
 			if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
 				return err
 			}
@@ -597,7 +598,20 @@ func (p *Pinger) recvICMP(
 				}
 				return err
 			}
+			// setsockopt sysIP_STRIPHDR may not work, check if we got IP header & need to strip it
+			if !p.Privileged() && n >= expectedSize {
+				if p.ipv4 {
+					if hdr, err := ipv4.ParseHeader(bytes); err == nil && hdr != nil && hdr.TotalLen == n && hdr.Len == ipv4.HeaderLen {
 
+						bytes = bytes[hdr.Len:]
+					}
+				} else {
+					if hdr, err := ipv6.ParseHeader(bytes); err == nil && hdr.PayloadLen == p.Size && hdr.NextHeader == protocolIPv6ICMP {
+
+						bytes = bytes[ipv6.HeaderLen:]
+					}
+				}
+			}
 			select {
 			case <-p.done:
 				return nil
