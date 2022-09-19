@@ -49,7 +49,6 @@
 // it calls the OnFinish callback.
 //
 // For a full ping example, see "cmd/ping/ping.go".
-//
 package ping
 
 import (
@@ -107,6 +106,7 @@ func New(addr string) *Pinger {
 		protocol:          "udp",
 		awaitingSequences: firstSequence,
 		TTL:               64,
+		TOS:               0,
 		logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 	}
 }
@@ -205,6 +205,8 @@ type Pinger struct {
 	logger Logger
 
 	TTL int
+
+	TOS int
 }
 
 type packet struct {
@@ -232,6 +234,9 @@ type Packet struct {
 
 	// TTL is the Time To Live on the packet.
 	Ttl int
+
+	// ToS is the Type of Service on the packet.
+	Tos int
 
 	// ID is the ICMP identifier.
 	ID int
@@ -419,6 +424,7 @@ func (p *Pinger) Run() error {
 	defer conn.Close()
 
 	conn.SetTTL(p.TTL)
+	conn.SetTOS(p.TOS)
 	return p.run(conn)
 }
 
