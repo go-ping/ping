@@ -131,6 +131,9 @@ type Pinger struct {
 	// interrupted.
 	Count int
 
+	// FlexibleInterval flag tells pinger to send next packet as soon as it
+	// receives echo response to a previous packet
+	FlexibleInterval bool
 	// Debug runs in debug mode
 	Debug bool
 
@@ -466,7 +469,8 @@ func (p *Pinger) runLoop(
 		timeout.Stop()
 	}()
 
-	if err := p.sendICMP(conn); err != nil {
+	err := p.sendICMP(conn)
+	if err != nil {
 		return err
 	}
 
@@ -479,21 +483,32 @@ func (p *Pinger) runLoop(
 			return nil
 
 		case r := <-recvCh:
-			err := p.processPacket(r)
+			err = p.processPacket(r)
 			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("processing received packet: %s", err)
+				if nce, nonCritical := err.(*NonCriticalError); !nonCritical {
+					logger.Errorf("processing received packet: %v", err)
+				} else {
+					logger.Debugf("%v for address: %s", nce, p.ipaddr)
+				}
+				continue
 			}
-
+			if p.FlexibleInterval {
+				interval.Reset(p.Interval)
+				if p.Count <= 0 || p.PacketsSent < p.Count {
+					err = p.sendICMP(conn)
+					if err != nil {
+						logger.Errorf("sending packet: %v", err)
+					}
+				}
+			}
 		case <-interval.C:
 			if p.Count > 0 && p.PacketsSent >= p.Count {
 				interval.Stop()
 				continue
 			}
-			err := p.sendICMP(conn)
+			err = p.sendICMP(conn)
 			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("sending packet: %s", err)
+				logger.Errorf("sending packet: %v", err)
 			}
 		}
 		if p.Count > 0 && p.PacketsRecv >= p.Count {
@@ -642,6 +657,24 @@ func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
 	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
 }
 
+// NonCriticalError is a class of recoverable/non-critical errors
+type NonCriticalError struct {
+	string
+}
+
+func (e *NonCriticalError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	return e.string
+}
+
+var (
+	notEchoPacket          = &NonCriticalError{"not an echo packet"}
+	mismatchedEchoPacketId = &NonCriticalError{"mismatched echo packet ID"}
+	duplicateEchoPacket    = &NonCriticalError{"duplicate echo packet ID"}
+)
+
 func (p *Pinger) processPacket(recv *packet) error {
 	receivedAt := time.Now()
 	var proto int
@@ -659,7 +692,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
 		// Not an echo reply, ignore it
-		return nil
+		return notEchoPacket
 	}
 
 	inPkt := &Packet{
@@ -673,7 +706,7 @@ func (p *Pinger) processPacket(recv *packet) error {
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
 		if !p.matchID(pkt.ID) {
-			return nil
+			return mismatchedEchoPacketId
 		}
 
 		if len(pkt.Data) < timeSliceLength+trackerLength {
@@ -691,11 +724,14 @@ func (p *Pinger) processPacket(recv *packet) error {
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
+			p.statsMu.Lock()
 			p.PacketsRecvDuplicates++
+			p.statsMu.Unlock()
+
 			if p.OnDuplicateRecv != nil {
 				p.OnDuplicateRecv(inPkt)
 			}
-			return nil
+			return duplicateEchoPacket
 		}
 		// remove it from the list of sequences we're waiting for so we don't get duplicates.
 		delete(p.awaitingSequences[*pktUUID], pkt.Seq)
