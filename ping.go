@@ -49,7 +49,6 @@
 // it calls the OnFinish callback.
 //
 // For a full ping example, see "cmd/ping/ping.go".
-//
 package ping
 
 import (
@@ -60,6 +59,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -629,7 +629,8 @@ func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
 }
 
 func (p *Pinger) processPacket(recv *packet) error {
-	receivedAt := time.Now()
+	// We store received time as soon as possible to have a more accurate ping latency
+	receivedAt := currentTimestamp()
 	var proto int
 	if p.ipv4 {
 		proto = protocolICMP
@@ -672,8 +673,8 @@ func (p *Pinger) processPacket(recv *packet) error {
 			return err
 		}
 
-		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
-		inPkt.Rtt = receivedAt.Sub(timestamp)
+		timestamp := BytesToTimestamp(pkt.Data[:timeSliceLength])
+		inPkt.Rtt, _ = time.ParseDuration(strconv.FormatUint(receivedAt-timestamp, 10) + "ns")
 		inPkt.Seq = pkt.Seq
 		// If we've already received this sequence, ignore it.
 		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
@@ -710,7 +711,7 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 	if err != nil {
 		return fmt.Errorf("unable to marshal UUID binary: %w", err)
 	}
-	t := append(timeToBytes(time.Now()), uuidEncoded...)
+	t := append(TimestampToBytes(), uuidEncoded...)
 	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
 		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
 	}
@@ -791,25 +792,8 @@ func (p *Pinger) listen() (packetConn, error) {
 	return conn, nil
 }
 
-func bytesToTime(b []byte) time.Time {
-	var nsec int64
-	for i := uint8(0); i < 8; i++ {
-		nsec += int64(b[i]) << ((7 - i) * 8)
-	}
-	return time.Unix(nsec/1000000000, nsec%1000000000)
-}
-
 func isIPv4(ip net.IP) bool {
 	return len(ip.To4()) == net.IPv4len
-}
-
-func timeToBytes(t time.Time) []byte {
-	nsec := t.UnixNano()
-	b := make([]byte, 8)
-	for i := uint8(0); i < 8; i++ {
-		b[i] = byte((nsec >> ((7 - i) * 8)) & 0xff)
-	}
-	return b
 }
 
 var seed int64 = time.Now().UnixNano()
