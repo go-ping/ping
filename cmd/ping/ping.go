@@ -38,6 +38,7 @@ Examples:
 
 func main() {
 	timeout := flag.Duration("t", time.Second*100000, "")
+	packettimeout := flag.Duration("p", time.Second*15, "")
 	interval := flag.Duration("i", time.Second, "")
 	count := flag.Int("c", -1, "")
 	size := flag.Int("s", 24, "")
@@ -77,6 +78,17 @@ func main() {
 		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v (DUP!)\n",
 			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
 	}
+	pinger.OnTimeout = func(pid int, pseq int) {
+		inPkt := ping.Packet{
+			Rtt:    *packettimeout,
+			Ttl:    -1,
+			ID:     pid,
+			Seq:    pseq,
+			IPAddr: pinger.IPAddr(),
+			Addr:   pinger.Addr(),
+		}
+		fmt.Printf("Timeout! : icmp_seq=%d  ttl=%v time=>%v\n", inPkt.Seq, inPkt.Ttl, inPkt.Rtt)
+	}
 	pinger.OnFinish = func(stats *ping.Statistics) {
 		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
 		fmt.Printf("%d packets transmitted, %d packets received, %d duplicates, %v%% packet loss\n",
@@ -89,6 +101,7 @@ func main() {
 	pinger.Size = *size
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
+	pinger.PktTimeout = *packettimeout
 	pinger.TTL = *ttl
 	pinger.SetPrivileged(*privileged)
 
