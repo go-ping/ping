@@ -49,7 +49,6 @@
 // it calls the OnFinish callback.
 //
 // For a full ping example, see "cmd/ping/ping.go".
-//
 package ping
 
 import (
@@ -580,7 +579,8 @@ func (p *Pinger) recvICMP(
 		case <-p.done:
 			return nil
 		default:
-			bytes := make([]byte, p.getMessageLength())
+			messageLength := p.getMessageLength()
+			bytes := make([]byte, messageLength)
 			if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
 				return err
 			}
@@ -598,10 +598,25 @@ func (p *Pinger) recvICMP(
 				return err
 			}
 
+			// syscall.SetsockoptInt dose not work with sysIP_STRIPHDR on the darwin,
+			// we need to check the bytes, if there is an IP header, we needs to strip it.
+			// Refer to https://go.googlesource.com/net/+/master/icmp/listen_posix.go#75.
+			if !p.Privileged() && n >= messageLength {
+				if p.ipv4 {
+					if hdr, err := ipv4.ParseHeader(bytes); err == nil && hdr != nil && hdr.TotalLen == n && hdr.Len == ipv4.HeaderLen {
+						bytes = bytes[ipv4.HeaderLen:]
+					}
+				} else {
+					if hdr, err := ipv6.ParseHeader(bytes); err == nil && hdr.PayloadLen == p.Size && hdr.NextHeader == protocolIPv6ICMP {
+						bytes = bytes[ipv6.HeaderLen:]
+					}
+				}
+			}
+
 			select {
 			case <-p.done:
 				return nil
-			case recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}:
+			case recv <- &packet{bytes: bytes, nbytes: len(bytes), ttl: ttl}:
 			}
 		}
 	}
