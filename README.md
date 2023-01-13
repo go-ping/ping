@@ -1,3 +1,8 @@
+# Deprecated
+
+Due to lack of maintainers and access, this library is no longer maintained.
+There is a new actively maintained fork: https://github.com/prometheus-community/pro-bing
+
 # go-ping
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/go-ping/ping)](https://pkg.go.dev/github.com/go-ping/ping)
 [![Circle CI](https://circleci.com/gh/go-ping/ping.svg?style=svg)](https://circleci.com/gh/go-ping/ping)
