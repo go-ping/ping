@@ -18,7 +18,7 @@ type packetConn interface {
 	SetReadDeadline(t time.Time) error
 	WriteTo(b []byte, dst net.Addr) (int, error)
 	SetTTL(ttl int)
-	SetIfaceIndex(iface string)
+	SetIfaceIndex(ifaceIndex int)
 }
 
 type icmpConn struct {
@@ -35,12 +35,8 @@ func (c *icmpConn) SetTTL(ttl int) {
 	c.ttl = ttl
 }
 
-func (c *icmpConn) SetIfaceIndex(iface string) {
-	i, err := net.InterfaceByName(iface)
-	if err != nil {
-		c.ifaceIndex = 0
-	}
-	c.ifaceIndex = i.Index
+func (c *icmpConn) SetIfaceIndex(ifaceIndex int) {
+	c.ifaceIndex = ifaceIndex
 }
 
 func (c *icmpConn) SetReadDeadline(t time.Time) error {
@@ -78,7 +74,7 @@ func (c *icmpv4Conn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	}
 	var cm *ipv4.ControlMessage
 	if 1 <= c.ifaceIndex {
-		// set interface
+		// If not set interface c.ifaceIndex == 0
 		if err := c.c.IPv4PacketConn().SetControlMessage(ipv4.FlagInterface, true); err != nil {
 			return 0, err
 		}
@@ -119,7 +115,7 @@ func (c *icmpV6Conn) WriteTo(b []byte, dst net.Addr) (int, error) {
 	}
 	var cm *ipv6.ControlMessage
 	if 1 <= c.ifaceIndex {
-		// set interface
+		// If not set interface c.ifaceIndex == 0
 		if err := c.c.IPv6PacketConn().SetControlMessage(ipv6.FlagInterface, true); err != nil {
 			return 0, err
 		}

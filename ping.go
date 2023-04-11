@@ -422,7 +422,11 @@ func (p *Pinger) Run() error {
 
 	conn.SetTTL(p.TTL)
 	if p.Iface != "" {
-		conn.SetIfaceIndex(p.Iface)
+		iface, err := net.InterfaceByName(p.Iface)
+		if err != nil {
+			return err
+		}
+		conn.SetIfaceIndex(iface.Index)
 	}
 	return p.run(conn)
 }

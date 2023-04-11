@@ -480,6 +480,8 @@ func TestStatisticsLossy(t *testing.T) {
 func TestSetIfaceName(t *testing.T) {
 	pinger := New("www.google.com")
 	pinger.Count = 1
+	pinger.Timeout = time.Second
+	pinger.SetPrivileged(true)
 
 	// Set loopback interface
 	pinger.Iface = "lo"
@@ -662,7 +664,7 @@ func (c testPacketConn) ICMPRequestType() icmp.Type        { return ipv4.ICMPTyp
 func (c testPacketConn) SetFlagTTL() error                 { return nil }
 func (c testPacketConn) SetReadDeadline(t time.Time) error { return nil }
 func (c testPacketConn) SetTTL(t int)                      {}
-func (c testPacketConn) SetIfaceIndex(iface string)        {}
+func (c testPacketConn) SetIfaceIndex(ifaceIndex int)      {}
 
 func (c testPacketConn) ReadFrom(b []byte) (n int, ttl int, src net.Addr, err error) {
 	return 0, 0, nil, nil
