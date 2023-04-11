@@ -13,7 +13,7 @@ import (
 var usage = `
 Usage:
 
-    ping [-c count] [-i interval] [-t timeout] [--privileged] host
+    ping [-c count] [-i interval] [-t timeout] [-I interface] [--privileged] host
 
 Examples:
 
@@ -29,6 +29,10 @@ Examples:
     # ping google for 10 seconds
     ping -t 10s www.google.com
 
+    # ping google specified interface
+    ping -I eth1 www.goole.com
+    ping -I eth2 www.goole.com
+
     # Send a privileged raw ICMP ping
     sudo ping --privileged www.google.com
 
@@ -42,6 +46,7 @@ func main() {
 	count := flag.Int("c", -1, "")
 	size := flag.Int("s", 24, "")
 	ttl := flag.Int("l", 64, "TTL")
+	iface := flag.String("I", "", "interface name")
 	privileged := flag.Bool("privileged", false, "")
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -90,6 +95,7 @@ func main() {
 	pinger.Interval = *interval
 	pinger.Timeout = *timeout
 	pinger.TTL = *ttl
+	pinger.Iface = *iface
 	pinger.SetPrivileged(*privileged)
 
 	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())

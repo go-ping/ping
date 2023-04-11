@@ -49,7 +49,6 @@
 // it calls the OnFinish callback.
 //
 // For a full ping example, see "cmd/ping/ping.go".
-//
 package ping
 
 import (
@@ -181,6 +180,9 @@ type Pinger struct {
 
 	// Source is the source IP address
 	Source string
+
+	// Iface used to send/recv ICMP messages
+	Iface string
 
 	// Channel and mutex used to communicate when the Pinger should stop between goroutines.
 	done chan interface{}
@@ -419,6 +421,9 @@ func (p *Pinger) Run() error {
 	defer conn.Close()
 
 	conn.SetTTL(p.TTL)
+	if p.Iface != "" {
+		conn.SetIfaceIndex(p.Iface)
+	}
 	return p.run(conn)
 }
 
