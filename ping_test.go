@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"runtime/debug"
 	"sync/atomic"
 	"testing"
@@ -474,6 +475,25 @@ func TestStatisticsLossy(t *testing.T) {
 	if stats.StdDevRtt != time.Duration(29603) {
 		t.Errorf("Expected %v, got %v", time.Duration(29603), stats.StdDevRtt)
 	}
+}
+
+func TestSetIfaceName(t *testing.T) {
+	pinger := New("www.google.com")
+	pinger.Count = 1
+
+	// Set loopback interface
+	pinger.Iface = "lo"
+	err := pinger.Run()
+	if runtime.GOOS == "linux" {
+		AssertNoError(t, err)
+	} else {
+		AssertError(t, err, "other platforms unsupport this feature")
+	}
+
+	// Set fake interface
+	pinger.Iface = "L()0pB@cK"
+	err = pinger.Run()
+	AssertError(t, err, "device not found")
 }
 
 // Test helpers
