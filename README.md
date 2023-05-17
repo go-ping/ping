@@ -111,6 +111,10 @@ See [this blog](https://sturmflut.github.io/linux/ubuntu/2015/01/17/unprivileged
 and the Go [x/net/icmp](https://godoc.org/golang.org/x/net/icmp) package
 for more details.
 
+This library also supports setting the `SO_MARK` socket option which is equivalent to the `-m mark`
+flag in standard ping binaries on linux. Setting this option requires the `CAP_NET_ADMIN` capability
+(via `setcap` or elevated privileges). You can set a mark (ex: 100) with `pinger.SetMark(100)` in your code.
+
 ### Windows
 
 You must use `pinger.SetPrivileged(true)`, otherwise you will receive
