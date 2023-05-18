@@ -60,6 +60,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -622,12 +623,18 @@ func (p *Pinger) recvICMP(
 	expBackoff := newExpBackoff(50*time.Microsecond, 11)
 	delay := expBackoff.Get()
 
+	// Workaround for https://github.com/golang/go/issues/47369
+	offset := 0
+	if p.ipv4 && !p.Privileged() && runtime.GOOS == "darwin" {
+		offset = 20
+	}
+
 	for {
 		select {
 		case <-p.done:
 			return nil
 		default:
-			bytes := make([]byte, p.getMessageLength())
+			bytes := make([]byte, p.getMessageLength()+offset)
 			if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
 				return err
 			}
@@ -680,6 +687,8 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var proto int
 	if p.ipv4 {
 		proto = protocolICMP
+		// Workaround for https://github.com/golang/go/issues/47369
+		recv.nbytes = stripIPv4Header(recv.nbytes, recv.bytes)
 	} else {
 		proto = protocolIPv6ICMP
 	}
@@ -864,4 +873,21 @@ var seed int64 = time.Now().UnixNano()
 // getSeed returns a goroutine-safe unique seed
 func getSeed() int64 {
 	return atomic.AddInt64(&seed, 1)
+}
+
+// stripIPv4Header strips IPv4 header bytes if present
+// https://github.com/golang/go/commit/3b5be4522a21df8ce52a06a0c4ba005c89a8590f
+func stripIPv4Header(n int, b []byte) int {
+	if len(b) < 20 {
+		return n
+	}
+	l := int(b[0]&0x0f) << 2
+	if 20 > l || l > len(b) {
+		return n
+	}
+	if b[0]>>4 != 4 {
+		return n
+	}
+	copy(b, b[l:])
+	return n - l
 }
