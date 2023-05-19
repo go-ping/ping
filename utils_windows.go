@@ -4,8 +4,6 @@
 package ping
 
 import (
-	"errors"
-
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -29,17 +27,17 @@ func (p *Pinger) matchID(ID int) bool {
 // SetMark sets the SO_MARK socket option on outgoing ICMP packets.
 // Setting this option requires CAP_NET_ADMIN.
 func (c *icmpConn) SetMark(mark uint) error {
-	return errors.New("setting SO_MARK socket option is not supported on this platform")
+	return ErrMarkNotSupported
 }
 
 // SetMark sets the SO_MARK socket option on outgoing ICMP packets.
 // Setting this option requires CAP_NET_ADMIN.
 func (c *icmpv4Conn) SetMark(mark uint) error {
-	return errors.New("setting SO_MARK socket option is not supported on this platform")
+	return ErrMarkNotSupported
 }
 
 // SetMark sets the SO_MARK socket option on outgoing ICMP packets.
 // Setting this option requires CAP_NET_ADMIN.
 func (c *icmpV6Conn) SetMark(mark uint) error {
-	return errors.New("setting SO_MARK socket option is not supported on this platform")
+	return ErrMarkNotSupported
 }
