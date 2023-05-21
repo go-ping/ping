@@ -85,6 +85,7 @@ var (
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 
 	ErrMarkNotSupported = errors.New("setting SO_MARK socket option is not supported on this platform")
+	ErrDFNotSupported   = errors.New("setting do-not-fragment bit is not supported on this platform")
 )
 
 // New returns a new Pinger struct pointer.
@@ -195,6 +196,9 @@ type Pinger struct {
 
 	// mark is a SO_MARK (fwmark) set on outgoing icmp packets
 	mark uint
+
+	// df when true sets the do-not-fragment bit in the outer IP or IPv6 header
+	df bool
 
 	// trackerUUIDs is the list of UUIDs being used for sending packets.
 	trackerUUIDs []uuid.UUID
@@ -420,6 +424,11 @@ func (p *Pinger) Mark() uint {
 	return p.mark
 }
 
+// SetDoNotFragment sets the do-not-fragment bit in the outer IP header to the desired value.
+func (p *Pinger) SetDoNotFragment(df bool) {
+	p.df = df
+}
+
 // Run runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
@@ -450,6 +459,12 @@ func (p *Pinger) RunWithContext(ctx context.Context) error {
 	if p.mark != 0 {
 		if err := conn.SetMark(p.mark); err != nil {
 			return fmt.Errorf("error setting mark: %v", err)
+		}
+	}
+
+	if p.df {
+		if err := conn.SetDoNotFragment(); err != nil {
+			return fmt.Errorf("error setting do-not-fragment: %v", err)
 		}
 	}
 

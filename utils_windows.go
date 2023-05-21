@@ -41,3 +41,18 @@ func (c *icmpv4Conn) SetMark(mark uint) error {
 func (c *icmpV6Conn) SetMark(mark uint) error {
 	return ErrMarkNotSupported
 }
+
+// SetDoNotFragment sets the do-not-fragment bit in the IP header of outgoing ICMP packets.
+func (c *icmpConn) SetDoNotFragment() error {
+	return ErrDFNotSupported
+}
+
+// SetDoNotFragment sets the do-not-fragment bit in the IP header of outgoing ICMP packets.
+func (c *icmpv4Conn) SetDoNotFragment() error {
+	return ErrDFNotSupported
+}
+
+// SetDoNotFragment sets the do-not-fragment bit in the IPv6 header of outgoing ICMPv6 packets.
+func (c *icmpV6Conn) SetDoNotFragment() error {
+	return ErrDFNotSupported
+}

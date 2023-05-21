@@ -19,6 +19,7 @@ type packetConn interface {
 	WriteTo(b []byte, dst net.Addr) (int, error)
 	SetTTL(ttl int)
 	SetMark(m uint) error
+	SetDoNotFragment() error
 	SetTOS(tos int)
 }
 

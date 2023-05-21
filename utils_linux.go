@@ -65,6 +65,42 @@ func (c *icmpV6Conn) SetMark(mark uint) error {
 	)
 }
 
+// SetDoNotFragment sets the do-not-fragment bit in the IP header of outgoing ICMP packets.
+func (c *icmpConn) SetDoNotFragment() error {
+	fd, err := getFD(c.c)
+	if err != nil {
+		return err
+	}
+	return os.NewSyscallError(
+		"setsockopt",
+		syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DO),
+	)
+}
+
+// SetDoNotFragment sets the do-not-fragment bit in the IP header of outgoing ICMP packets.
+func (c *icmpv4Conn) SetDoNotFragment() error {
+	fd, err := getFD(c.icmpConn.c)
+	if err != nil {
+		return err
+	}
+	return os.NewSyscallError(
+		"setsockopt",
+		syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MTU_DISCOVER, syscall.IP_PMTUDISC_DO),
+	)
+}
+
+// SetDoNotFragment sets the do-not-fragment bit in the IPv6 header of outgoing ICMPv6 packets.
+func (c *icmpV6Conn) SetDoNotFragment() error {
+	fd, err := getFD(c.icmpConn.c)
+	if err != nil {
+		return err
+	}
+	return os.NewSyscallError(
+		"setsockopt",
+		syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_MTU_DISCOVER, syscall.IP_PMTUDISC_DO),
+	)
+}
+
 // getFD gets the system file descriptor for an icmp.PacketConn
 func getFD(c *icmp.PacketConn) (uintptr, error) {
 	v := reflect.ValueOf(c).Elem().FieldByName("c").Elem()

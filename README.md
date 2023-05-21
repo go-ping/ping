@@ -115,6 +115,9 @@ This library also supports setting the `SO_MARK` socket option which is equivale
 flag in standard ping binaries on linux. Setting this option requires the `CAP_NET_ADMIN` capability
 (via `setcap` or elevated privileges). You can set a mark (ex: 100) with `pinger.SetMark(100)` in your code.
 
+Setting the "Don't Fragment" bit is supported under Linux which is equivalent to `ping -Mdo`.
+You can enable this with `pinger.SetDoNotFragment(true)`.
+
 ### Windows
 
 You must use `pinger.SetPrivileged(true)`, otherwise you will receive
