@@ -178,6 +178,12 @@ type Pinger struct {
 	// OnDuplicateRecv is called when a packet is received that has already been received.
 	OnDuplicateRecv func(*Packet)
 
+	// OnSendError is called when an error occurs while Pinger attempts to send a packet
+	OnSendError func(*Packet, error)
+
+	// OnRecvError is called when an error occurs while Pinger attempts to receive a packet
+	OnRecvError func(error)
+
 	// Size of packet being sent
 	Size int
 
@@ -657,6 +663,9 @@ func (p *Pinger) recvICMP(
 			var err error
 			n, ttl, _, err = conn.ReadFrom(bytes)
 			if err != nil {
+				if p.OnRecvError != nil {
+					p.OnRecvError(err)
+				}
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
 						// Read timeout
@@ -804,6 +813,16 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 
 	for {
 		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
+			if p.OnSendError != nil {
+				outPkt := &Packet{
+					Nbytes: len(msgBytes),
+					IPAddr: p.ipaddr,
+					Addr:   p.addr,
+					Seq:    p.sequence,
+					ID:     p.id,
+				}
+				p.OnSendError(outPkt, err)
+			}
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
 					continue
