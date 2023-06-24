@@ -801,7 +801,7 @@ func TestRunWithTimeoutContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	err = pinger.run(ctx, conn)
-	AssertTrue(t, err == nil)
+	AssertTrue(t, errors.Is(err, context.DeadlineExceeded))
 	elapsedTime := time.Since(start)
 	AssertTrue(t, elapsedTime < 10*time.Second)
 

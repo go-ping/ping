@@ -498,6 +498,7 @@ func (p *Pinger) run(ctx context.Context, conn packetConn) error {
 		select {
 		case <-ctx.Done():
 			p.Stop()
+			return ctx.Err()
 		case <-p.done:
 		}
 		return nil
