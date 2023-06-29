@@ -475,6 +475,22 @@ func TestStatisticsLossy(t *testing.T) {
 	}
 }
 
+func TestStatisticsZeroDivision(t *testing.T) {
+	p := New("localhost")
+	err := p.Resolve()
+	AssertNoError(t, err)
+	AssertEqualStrings(t, "localhost", p.Addr())
+
+	p.PacketsSent = 0
+	stats := p.Statistics()
+
+	// If packets were not sent (due to send errors), ensure that
+	// PacketLoss is 0 instead of NaN due to zero division
+	if stats.PacketLoss != 0 {
+		t.Errorf("Expected %v, got %v", 0, stats.PacketLoss)
+	}
+}
+
 // Test helpers
 func makeTestPinger() *Pinger {
 	pinger := New("127.0.0.1")

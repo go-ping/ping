@@ -538,7 +538,12 @@ func (p *Pinger) Statistics() *Statistics {
 	p.statsMu.RLock()
 	defer p.statsMu.RUnlock()
 	sent := p.PacketsSent
-	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
+
+	var loss float64
+	if sent > 0 {
+		loss = float64(sent-p.PacketsRecv) / float64(sent) * 100
+	}
+
 	s := Statistics{
 		PacketsSent:           sent,
 		PacketsRecv:           p.PacketsRecv,
