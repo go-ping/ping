@@ -1,3 +1,8 @@
+# Cherry picking
+
+We have cherry-picked some commits from the successor fork, https://github.com/prometheus-community/pro-bing
+
+
 # Deprecated
 
 Due to lack of maintainers and access, this library is no longer maintained.
