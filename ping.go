@@ -1,4 +1,5 @@
 // Deprecated: This package is no longer maintained.
+// Package ping is a simple but powerful ICMP echo (ping) library.
 //
 // Here is a very simple example that sends and receives three packets:
 //
