@@ -4,3 +4,7 @@ issues:
   - path: _test.go
     linters:
     - errcheck
+linters-settings:
+  staticcheck:
+    checks:
+      - "-SA1019"
